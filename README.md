@@ -171,10 +171,19 @@ This resource will manage images within OpenNebula.
   :size => Integer size of the image to allocate in MB
   :datastore_id => Integer id of the datastore in OpenNebula to use 
   :type => ['OS', 'CDROM', 'DATABLOCK', 'KERNEL', 'RAMDISK', 'CONTEXT'] type of the image to create; default: 'DATABLOCK'
+  :description => String description of the image
   :fs_type => String type of the filesystem to create; default: 'ext2'
   :img_driver => String driver type; default: 'qcow2'
   :prefix => String prefix; default: 'vd'
   :persistent => [ TrueClass, FalseClass] flag indicating if the image should be persistent; default: false
+  :public => [ TrueClass, FalseClass ] flag indicating if the image is public
+  :disk_type => String Image disk type eq. ext3
+  :source => String Image source attribute
+  :target => String Image target attribute 
+  :image_file => String Local path to the qcow image file. Default: Chef::Config[:file_cache_path]
+  :image_id => Integer ID of the image to download
+  :download_url => String OpenNebula download URL. Default is ENV['ONE_DOWNLOAD']
+  :driver => String Image driver eq. 'qcow2'
   :machine_id => [String, Integer] id of the machine (VM) for disk attach
   :disk_id => [String, Integer] id or name of the disk to attach/snapshot
 ```
@@ -182,7 +191,7 @@ This resource will manage images within OpenNebula.
 ### Actions
 
 ```ruby
-  actions :allocate, :create, :destroy, :attach, :snapshot
+  actions :allocate, :create, :destroy, :attach, :snapshot, :upload, :download
   default_action :create
 ```
 
@@ -234,6 +243,38 @@ one_image "snapshot-img" do
   disk_id "bootstrap-img"
   persistent true
   action :snapshot
+end
+```
+
+#### 6. Upload a local qcow2 image file to OpenNebula
+
+```ruby
+one_image "snapshot-img" do
+  datastore_id "test-vm"
+  image_file "/local/path/to/qcow/image/file"
+  img_driver "qcow2"
+  type "OS"
+  description "This is my cool qcow image"
+  action :upload
+end
+```
+
+#### 7. Download a 'boggi-test-img' and store it in /home/local/my-image.qcow2.  Download URL read from ENV[ONE_DOWNLOAD] variable. It will be stored locally in Chef::Config[:file_cache_path]/boggi-test-img.qcow2.
+
+```ruby
+one_image "boggi-test-img" do
+  action :download
+end
+```
+
+#### 8. Download image ID 12345 and store it in /tmp/image.qcow2.
+
+```ruby
+one_image "boggi-test-img" do
+  download_url "http://my.opennebula.download.endpoint/"
+  image_id 12345
+  image_file "/tmp/image.qcow2"
+  action :download
 end
 ```
 
