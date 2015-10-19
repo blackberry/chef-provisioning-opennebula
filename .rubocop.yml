@@ -1,0 +1,62 @@
+inherit_from: .rubocop_todo.yml
+
+AllCops:
+  Exclude:
+    - 'vendor/**/*'
+    - 'spec/fixtures/**/*'
+    - 'files/default/ha.rb'
+
+AlignParameters:
+  Enabled: false
+
+Encoding:
+  Enabled: false
+
+LineLength:
+  Max: 200
+
+MethodLength:
+  Max: 50
+
+CyclomaticComplexity:
+  Max: 20
+
+PerceivedComplexity:
+  Max: 20
+
+ClassLength:
+  CountComments: false
+  Max: 1000
+
+AbcSize:
+  Max: 40
+
+ParameterLists:
+  Max: 15
+  CountKeywordArgs: true
+
+StringLiterals:
+  Enabled: false
+
+Style/RescueModifier:
+  Description: 'Avoid using rescue in its modifier form.'
+  StyleGuide: 'https://github.com/bbatsov/ruby-style-guide#no-rescue-modifiers'
+  Enabled: false
+
+Style/HashSyntax:
+  Description: >-
+                 Prefer Ruby 1.9 hash syntax { a: 1, b: 2 } over 1.8 syntax
+                 { :a => 1, :b => 2 }.
+  StyleGuide: 'https://github.com/bbatsov/ruby-style-guide#hash-literals'
+  Enabled: false
+
+Style/IndentHash:
+  Description: 'Checks the indentation of the first key in a hash literal.'
+  Enabled: false
+
+Style/NumericLiterals:
+  Description: >-
+                 Add underscores to large numeric literals to improve their
+                 readability.
+  StyleGuide: 'https://github.com/bbatsov/ruby-style-guide#underscores-in-numerics'
+  Enabled: false
