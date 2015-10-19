@@ -183,8 +183,8 @@ EOT
 
   def allocate_vnet(vnet_name, cluster_id, template_str)
     vnet = OpenNebula::Vnet.new(OpenNebula::Vnet.build_xml, @client)
-    vnet = vnet.allocate(template_str, cluster_id) if !OpenNebula.is_error?(vnet)
-    raise "Failed to allocate vnet #{template_name}: #{rc.message}" if OpenNebula.is_error?(vnet)
+    rc = vnet.allocate(template_str, cluster_id) if !OpenNebula.is_error?(vnet)
+    raise "Failed to allocate vnet #{template_name}: #{rc.message}" if OpenNebula.is_error?(rc)
     vnet
   end
 
