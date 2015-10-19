@@ -1,6 +1,8 @@
 class Chef::Provider::OneImage < Chef::Provider::LWRPBase
   use_inline_resources
 
+  attr :image
+
   def whyrun_supported?
     true
   end
@@ -12,53 +14,62 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     @action_handler ||= Chef::Provisioning::ChefProviderActionHandler.new(self)
   end
 
-  action :allocate do
+  def exists?(filter)
     new_driver = get_driver
-    img = new_driver.one.get_resource('img', {:name => new_resource.name})
-    if img.nil?
+    @image = new_driver.one.get_resource('img', filter)
+    !@image.nil?
+  end
+
+  action :allocate do
+    if exists?({:name => new_resource.name}) 
+      action_handler.report_progress "image '#{new_resource.name}' already exists - nothing to do"
+    else
+      raise "'size' must be specified" if !new_resource.size
+      raise "'datastore_id' must be specified" if !new_resource.datastore_id
+
       action_handler.perform_action "allocated image '#{new_resource.name}'" do
-        img = new_driver.one.allocate_img(
+        @image = new_driver.one.allocate_img(
           new_resource.name, 
           new_resource.size, 
           new_resource.datastore_id, 
-          new_resource.type, 
-          new_resource.fs_type, 
-          new_resource.img_driver, 
-          new_resource.prefix,
-          new_resource.persistent)
-        Chef::Log.info("Image '#{new_resource.name}' allocate in initial state #{img.state_str}")
+          new_resource.type || 'OS', 
+          new_resource.fs_type || 'ext2', 
+          new_resource.img_driver || 'qcow2', 
+          new_resource.prefix || 'vd',
+          new_resource.persistent || false)
+        Chef::Log.info("Image '#{new_resource.name}' allocate in initial state #{@image.state_str}")
         @new_resource.updated_by_last_action(true)
       end
-    else
-      action_handler.report_progress "image '#{new_resource.name}' already exists - nothing to do"
     end
-    img
+    @image
   end
 
   action :create do
-    img = action_allocate
-    case img.state_str
+    @image = action_allocate
+    case @image.state_str
     when 'INIT', 'LOCKED'
       action_handler.perform_action "wait for image '#{new_resource.name}' to be READY" do
-        current_driver.one.wait_for_img(new_resource.name, img.id)
+        current_driver.one.wait_for_img(new_resource.name, @image.id)
         @new_resource.updated_by_last_action(true)
       end
     when 'READY', 'USED', 'USED_PERS'
-      action_handler.report_progress "image '#{new_resource.name}' is already in #{img.state_str} state - nothing to do"
+      action_handler.report_progress "image '#{new_resource.name}' is already in #{@image.state_str} state - nothing to do"
     else
-      raise "Image #{new_resource.name} is in unexpected state '#{img.state_str}'"
+      raise "Image #{new_resource.name} is in unexpected state '#{@image.state_str}'"
     end
   end
 
   action :destroy do
-    new_driver = get_driver
-    img = new_driver.one.get_resource('img', {:name => new_resource.name})
-    if !img.nil?
+    if exists?({:name => new_resource.name}) 
       action_handler.perform_action "deleted image '#{new_resource.name}'" do
-        rc = img.delete
+        rc = @image.delete
         raise "Failed to delete image '#{new_resource.name}' : #{rc.message}" if OpenNebula.is_error?(rc)
+        while !new_driver.one.get_resource('img', {:name => new_resource.name}).nil? do
+          Chef::Log.debug("Waiting for delete image to finish...")
+          sleep 1
+        end
         @new_resource.updated_by_last_action(true)
-      end
+      end      
     else
       action_handler.report_progress "image '#{new_resource.name}' does not exist - nothing to do"
     end
@@ -66,13 +77,12 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
 
   action :attach do
     raise "Missing attribute 'machine_id'" if !new_resource.machine_id
-    new_driver = get_driver
-    img = new_driver.one.get_resource('img', {:name => new_resource.name})
-    vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
+    raise "Failed to attach disk - Image '#{new_resource.name}' does not exist" if  !exists?({:name => new_resource.name})
 
-    if !img.nil? and !vm.nil? 
+    vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
+    raise "Failed to attach disk - VM '#{new_resource.machine}' does not exist" if vm.nil?
       action_handler.perform_action "attached disk #{new_resource.name} to #{vm.name}" do
-        disk_hash = img.to_hash
+        disk_hash = @image.to_hash
         disk_tpl = <<-EOT
 DISK = [
   IMAGE = #{disk_hash['IMAGE']['NAME']},
@@ -90,76 +100,76 @@ EOT
           @new_resource.updated_by_last_action(true)
         end
       end
-    else
-      raise "Failed to attach disk - Image '#{new_resource.name}' does not exist" if img.nil?
-      raise "Failed to attach disk - VM '#{new_resource.machine}' does not exist" if vm.nil?
-    end
   end
 
   action :snapshot do
     raise "Missing attribute 'machine_id'" if !new_resource.machine_id
-    new_driver = get_driver
-    vm = nil
-    vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
-    img = new_driver.one.get_resource('img', {:name => new_resource.name})
-    
-    if !img.nil?
+    if exists?({:name => new_resource.name})
       action_handler.report_progress "snapshot image '#{new_resource.name}' already exists - nothing to do"
     else
+      vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
       raise "Failed to create snapshot - VM '#{new_resource.machine_id}' does not exist" if vm.nil?
-
       action_handler.perform_action "created snapshot from '#{new_resource.machine_id}'" do
         disk_id = new_resource.disk_id.is_a?(Integer) ? new_resource.disk_id : new_driver.one.get_disk_id(vm, new_resource.disk_id)
         raise "No disk '#{new_resource.disk_id}' found on '#{vm.name}'" if disk_id.nil?
 
-        new_img = vm.disk_snapshot(disk_id, new_resource.name, "", true)
-        raise "Failed to create snapshot '#{new_resource.name}': #{new_img.message}" if OpenNebula.is_error?(new_img)
+        @image = vm.disk_snapshot(disk_id, new_resource.name, "", true)
+        raise "Failed to create snapshot '#{new_resource.name}': #{@image.message}" if OpenNebula.is_error?(@image)
 
-        new_img = new_driver.one.wait_for_img(new_resource.name, new_img)
+        @image = new_driver.one.wait_for_img(new_resource.name, @image)
         if new_resource.persistent
           action_handler.report_progress "make image '#{new_resource.name}' persistent"
-          new_img.persistent 
+          @image.persistent 
         end
         @new_resource.updated_by_last_action(true)
-      end
+      end      
     end
   end
 
   action :upload do
-    raise "'datastore_id' is required" if @new_resource.datastore_id.nil?
-    raise "'image_file' is required" if @new_resource.image_file.nil?
-    raise "image_file #{@new_resource.image_file} does not exist" if !::File.exists? @new_resource.image_file
+    raise "'datastore_id' is required" if !new_resource.datastore_id
+    raise "'image_file' is required" if !new_resource.image_file
+    raise "image_file #{new_resource.image_file} does not exist" if !::File.exists? new_resource.image_file
 
-    new_driver = get_driver
+    file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
+    description = @new_resource.description || "#{@new_resource.name} image"
+    driver = @new_resource.img_driver || 'qcow2'
 
-    action_handler.perform_action "uploaded image '#{@new_resource.image_file}'" do
-      file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
-      description = @new_resource.description || "#{@new_resource.name} image"
-      driver = @new_resource.img_driver || 'qcow2'
-      
-      begin
-        pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup=>true)
-        raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
+    if exists?({:name => new_resource.name})
+      if @image.name == @new_resource.name and 
+         @image['PATH'] == file_url and 
+         @image['TEMPLATE/DRIVER'] == driver and 
+         @image['TEMPLATE/DESCRIPTION'] == description and 
+         @image['DATASTORE_ID'] == @new_resource.datastore_id.to_s
+        action_handler.report_progress("image '#{@new_resource.name}' (ID: #{@image.id}) already exists - nothing to do")
+      else
+        raise "image '#{new_resource.name}' already exists, but it is not the same image"
+      end
+    else
+      action_handler.perform_action "uploaded image '#{@new_resource.image_file}'" do
+        begin
+          pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup=>true)
+          raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
+          new_driver.one.upload_img(
+            @new_resource.name,
+            @new_resource.datastore_id,
+            file_url,
+            driver,
+            description,
+            @new_resource.type,
+            @new_resource.prefix,
+            @new_resource.persistent,
+            @new_resource.public,
+            @new_resource.target,
+            @new_resource.disk_type,
+            @new_resource.source,
+            @new_resource.size,
+            @new_resource.fs_type)
 
-        new_driver.one.upload_img(
-          @new_resource.name,
-          @new_resource.datastore_id,
-          file_url,
-          driver,
-          description,
-          @new_resource.type,
-          @new_resource.prefix,
-          @new_resource.persistent,
-          @new_resource.public,
-          @new_resource.target,
-          @new_resource.disk_type,
-          @new_resource.source,
-          @new_resource.size,
-          @new_resource.fs_type)
-
-        @new_resource.updated_by_last_action(true)
-      ensure
-        system("sudo kill -9 -#{pid}")
+          @new_resource.updated_by_last_action(true)
+        ensure
+          system("sudo kill -9 -#{pid}")
+        end
       end
     end
   end

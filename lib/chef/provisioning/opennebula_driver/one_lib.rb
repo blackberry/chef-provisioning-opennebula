@@ -24,16 +24,36 @@ class OneLib
   def get_pool(type)
     raise "pool type must be specified" if type.nil?
     case type
-    when 'vm'
-      OpenNebula::VirtualMachinePool.new(@client)
+    when 'acl'
+      OpenNebula::AclPool.new(@client)
+    when 'cluster'
+      OpenNebula::ClusterPool.new(@client)
+    when 'datastore'
+      OpenNebula::DatastorePool.new(@client)
+    when 'doc'
+      OpenNebula::DocumentPool.new(@client)
+    when 'jsondoc'
+      OpenNebula::DocumentPoolJSON.new(@client)
+    when 'group'
+      OpenNebula::GroupPool.new(@client)
+    when 'host'
+      OpenNebula::HostPool.new(@client)
     when 'img'
       OpenNebula::ImagePool.new(@client, -1)
+    when 'secgroup'
+      OpenNebula::SecurityGroupPool.new(@client)
     when 'tpl'
       OpenNebula::TemplatePool.new(@client, -1)
     when 'user'
       OpenNebula::UserPool.new(@client)
+    when 'vdc'
+      OpenNebula::VdcPool.new(@client)
+    when 'vm'
+      OpenNebula::VirtualMachinePool.new(@client)
+    when 'vnet'
+      OpenNebula::VirtualNetworkPool.new(@client)
     else
-      raise "Invalid pool type specified. Must be one of: 'img', 'vm' or 'tpl'"
+      raise "Invalid pool type specified."
     end
   end
 
@@ -43,36 +63,24 @@ class OneLib
       return nil
     end
     pool = get_pool(resource_type)
-    pool.info!(-2, filter[:id].to_i, filter[:id].to_i) if filter[:id]
-    return pool.first if filter[:id]
+    if filter[:id] and !filter[:id].nil?
+      pool.info!(-2, filter[:id].to_i, filter[:id].to_i) 
+      return pool.first
+    end
 
-    raise "Resource name is not defined" if !filter[:name]
-    name = filter[:name]
     pool.info!(-2, -1, -1)
     pool.each do |res|
-      # not sure about the id and name check or if it should only be id
-      if name and res.name == name
-        Chef::Log.debug("resource_exists: #{res.name}  (#{res.id})")
-        return res
-      end
+      return res if res.name == filter[:name]
     end
-    Chef::Log.debug("No resource found... #{filter}")
     nil
   end
 
   def allocate_vm(template)
-    rc, vm = nil, nil
-    # retry up to 3 times because OpenNebula sometimes fails
-    3.times { |i|
-      vm = OpenNebula::VirtualMachine.new(OpenNebula::VirtualMachine.build_xml, @client)
-      if !OpenNebula.is_error?(vm)
-        Chef::Log.debug(template)
-        rc = vm.allocate(template)
-        break if !OpenNebula.is_error?(rc)
-      end
-      Chef::Log.info("Retrying VM allocation...")
-      sleep(1)
-    }
+    vm, rc = nil, nil
+    vm = OpenNebula::VirtualMachine.new(OpenNebula::VirtualMachine.build_xml, @client)
+    raise "#{vm.message}" if OpenNebula.is_error?(vm)    
+    Chef::Log.debug(template)
+    rc = vm.allocate(template)
     raise "#{rc.message}" if OpenNebula.is_error?(rc)
     vm
   end
@@ -90,8 +98,7 @@ class OneLib
     vm
   end
 
-  def upload_img(name, ds_id, path, driver = 'qcow2', description, type, prefix, persistent, pub, target, disk_type, source, size, fstype)
-    
+  def upload_img(name, ds_id, path, driver, description, type, prefix, persistent, pub, target, disk_type, source, size, fstype)    
     template = <<-EOTPL
 NAME        = #{name}
 PATH        = \"#{path}\"
@@ -119,7 +126,7 @@ EOTPL
     wait_for_img(name, image.id)
   end
 
-  def allocate_img(name, size, ds_id, type = 'DATABLOCK', fstype = 'ext2', driver = 'qcow2', prefix = 'vd', persistent = false)
+  def allocate_img(name, size, ds_id, type, fstype, driver, prefix, persistent)
     img, rc = nil, nil
 
     template = <<-EOT
@@ -134,8 +141,7 @@ DEV_PREFIX = #{prefix}
 EOT
 
     img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
-    rc = img
-    raise rc.message if OpenNebula.is_error?(rc)
+    raise img.message if OpenNebula.is_error?(img)
 
     rc = img.allocate(template, ds_id)
     raise rc.message if OpenNebula.is_error?(rc)
@@ -175,27 +181,21 @@ EOT
     disk_id
   end
 
+  def allocate_vnet(vnet_name, cluster_id, template_str)
+    vnet = OpenNebula::Vnet.new(OpenNebula::Vnet.build_xml, @client)
+    vnet = vnet.allocate(template_str, cluster_id) if !OpenNebula.is_error?(vnet)
+    raise "Failed to allocate vnet #{template_name}: #{rc.message}" if OpenNebula.is_error?(vnet)
+    vnet
+  end
+
   def allocate_template(template_name, template_str)
     rc, tpl = nil, nil
 
-    2.times {
-      tpl = OpenNebula::Template.new(OpenNebula::Template.build_xml, @client)
-      rc = tpl
-      if !OpenNebula.is_error?(rc)
-        rc = tpl.allocate("#{template_str}")
-        if !OpenNebula.is_error?(rc)
-          break
-        else
-          Chef::Log.error(rc.message)
-        end
-      else
-        Chef::Log.error(rc.message)
-      end
-      sleep(3)
-    }
-    Chef::Log.debug("Allocated template #{template_name} (#{tpl.id})") if !OpenNebula.is_error?(rc)
-    raise "Failed to allocate template #{template_name}" if OpenNebula.is_error?(rc)
-    tpl
+    tpl = OpenNebula::Template.new(OpenNebula::Template.build_xml, @client)
+    rc = tpl
+    rc = tpl.allocate("#{template_str}") if !OpenNebula.is_error?(rc)
+    raise "Failed to allocate template #{template_name}: #{rc.message}" if OpenNebula.is_error?(rc)
+    rc
   end
 
   def recursive_merge(dest, source)
