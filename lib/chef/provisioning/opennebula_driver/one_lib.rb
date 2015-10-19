@@ -1,3 +1,17 @@
+# Copyright 2015, BlackBerry, Inc.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 require 'opennebula'
 
 require 'opennebula/document'
@@ -16,7 +30,7 @@ class OneLib
 
   def initialize(credentials, endpoint, options = {})
     @client = OpenNebula::Client.new(credentials, endpoint, options)
-    rc = client.get_version()
+    rc = @client.get_version()
     raise rc.message if OpenNebula.is_error?(rc)
   end
 
@@ -63,16 +77,22 @@ class OneLib
       return nil
     end
     pool = get_pool(resource_type)
-    if filter[:id] and !filter[:id].nil?
+
+    if resource_type != 'user' and filter[:id] and !filter[:id].nil?
       pool.info!(-2, filter[:id].to_i, filter[:id].to_i) 
       return pool.first
     end
 
-    pool.info!(-2, -1, -1)
-    pool.each do |res|
-      return res if res.name == filter[:name]
+    if resource_type == 'user'
+      pool.info
+    else
+      pool.info!(-2, -1, -1) if resource_type != 'user'
     end
-    nil
+    resources = []
+    pool.each do |res|
+      resources << res if res.name == filter[:name]
+    end
+    return resources.size == 0 ? nil : (resources.size == 1 ? resources[0] : resources)
   end
 
   def allocate_vm(template)
@@ -247,7 +267,12 @@ EOT
       raise "To create a VM you must specify one of ':template', ':template_id', ':template_name', or ':template' options in ':bootstrap_options'"
     end
     raise "Inavlid VM template : #{t_hash}" if t_hash.nil? or t_hash.empty?
-    recursive_merge(t_hash, options[:user_variables]) if options[:user_variables]
+    tpl_updates = options[:template_options] || {}
+    if options[:user_variables]
+        Chef::Log.warn("':user_variables' will be deprecated in next version in favour of ':template_options'") if options.has_key?(:user_variables)
+        recursive_merge(tpl_updates, options[:user_variables])
+    end
+    recursive_merge(t_hash, tpl_updates) if !tpl_updates.empty?
     t_hash['NAME'] = options[:one_vm_name_fqdn] ? name : name.split('.')[0]
     tpl = create_template(t_hash)
     Chef::Log.debug(tpl)

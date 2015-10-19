@@ -1,79 +1,66 @@
+# Copyright 2015, BlackBerry, Inc.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
 
 class Chef::Provider::OneTemplate < Chef::Provider::LWRPBase
   use_inline_resources
+
+  provides :one_template
+
+  attr :template
   
+  def whyrun_supported?
+    true
+  end
+  
+  def load_current_resource
+  end
+
   def action_handler
     @action_handler ||= Chef::Provisioning::ChefProviderActionHandler.new(self)
   end
 
-  action :create do
-    raise "Missing attribute 'template_file' or 'template'" if !new_resource.template_file and !new_resource.template
+  def exists?
     new_driver = get_driver
-    tpl = new_driver.one.get_resource('tpl', {:name => new_resource.name})
+    @template = new_driver.one.get_resource('tpl', {:name => new_resource.name})
+    !@template.nil?
+  end
 
-    if !tpl.nil?
-      action_handler.report_progress "Template #{new_resource.name} already exists - nothing to do"
+
+  action :create do
+    if exists?
+      action_handler.report_progress "template '#{new_resource.name}' already exists - nothing to do"
     else
-      action_handler.perform_action "created template #{new_resource.name}" do
+      raise "Missing attribute 'template_file' or 'template'" if !new_resource.template_file and !new_resource.template
+      action_handler.perform_action "create template '#{new_resource.name}'" do
         template_str = File.read(new_resource.template_file) if new_resource.template_file
         template_str = new_driver.one.create_template(new_resource.template) if new_resource.template
         template_str << "\nNAME=\"#{new_resource.name}\""
-        tpl = new_driver.one.allocate_template(new_resource.name, template_str)
+        @template = new_driver.one.allocate_template(new_resource.name, template_str)
         @new_resource.updated_by_last_action(true)
       end
     end
   end
 
   action :delete do
-    new_driver = get_driver
-    tpl = new_driver.one.get_resource('tpl', {:name => new_resource.name})
-
-    if tpl.nil?
-      action_handler.report_progress "template #{new_resource.name} does not exists - nothing to do"
+    if !exists?
+      action_handler.report_progress "template '#{new_resource.name}' does not exists - nothing to do"
     else
-      action_handler.perform_action "deleted template #{new_resource.name}" do
-        tpl.delete
+      action_handler.perform_action "delete template '#{new_resource.name}'" do
+        @template.delete
         @new_resource.updated_by_last_action(true)
       end
     end
-  end
-
-  action :instantiate do
-    raise "Only one of 'instances' or 'count' attributes can be specified" if new_resource.count and new_resource.instances
-    new_driver = get_driver
-    tpl = new_driver.one.get_resource('tpl', {:name => new_resource.name})
-
-    if tpl.nil?
-      raise "Failed to instantiate template #{new_resource.name} - template does not exists"
-    else
-      action_handler.perform_action "created instances from template #{new_resource.name}" do
-        if new_resource.instances 
-          instance_array = new_resource.instances.split(',') if new_resource.instances.is_a?(String)
-          instance_array = new_resource.instances if new_resource.instances.is_a?(Array)
-          instance_array.each { |inst|
-            # check fi this name already exists
-            vm = new_driver.one.get_resource('vm', {:name => inst})
-            if !vm.nil?
-              action_handler.report_progress "Instance with name '#{inst}' already exists - skipping"
-            else
-              rc = tpl.instantiate(inst)
-              raise "Failed to create instance from template #{new_resource.name}: #{rc.message}" if OpenNebula.is_error?(rc) 
-              action_handler.report_progress "created instance: #{inst} - ID: #{rc}"
-              @new_resource.updated_by_last_action(true)
-            end
-          }
-        else 
-          new_resource.count.times {            
-            rc = tpl.instantiate
-            raise "Failed to create instance from template #{new_resource.name}: #{rc.message}" if OpenNebula.is_error?(rc) 
-            action_handler.report_progress "created instance with ID: #{rc}"
-            @new_resource.updated_by_last_action(true)
-          }
-        end
-      end
-    end
-
-
   end
 
   protected

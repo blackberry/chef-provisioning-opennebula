@@ -1,3 +1,17 @@
+# Copyright 2015, BlackBerry, Inc.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 require 'chef/provisioning/driver'
 require 'chef/provisioning/machine/unix_machine'
 require 'chef/provisioning/convergence_strategy/install_cached'
@@ -106,12 +120,18 @@ class Driver < Chef::Provisioning::Driver
   #   saved back after allocate_machine completes.
   #
   def allocate_machine(action_handler, machine_spec, machine_options)
+    raise "'bootstrap_options' must be specified" if !machine_options.bootstrap_options
+
     if machine_options.bootstrap_options[:enforce_chef_fqdn] and machine_spec.name.scan(/([a-z0-9-]+\.)/i).length == 0
       raise "Machine 'name' must be a FQDN" 
     end
     instance = instance_for(machine_spec)
 
     if instance.nil?
+      if machine_options.bootstrap_options[:unique_names]
+        instance = @one.get_resource('vm', {:name => machine_spec.name})
+        raise "VM with name '#{machine_spec.name}' already exists" if !instance.nil?
+      end
       action_handler.perform_action "created vm '#{machine_spec.name}'" do
         Chef::Log.debug(machine_options)
         tpl = @one.get_template(machine_spec.name, machine_options.bootstrap_options)
@@ -121,6 +141,8 @@ class Driver < Chef::Provisioning::Driver
           'driver_version' => Chef::Provisioning::OpenNebulaDriver::VERSION,
           'allocated_at' => Time.now.utc.to_s,
           'image_id' => machine_options.bootstrap_options[:image_id] || nil,
+          'is_shutdown' => machine_options.bootstrap_options[:is_shutdown] || false,
+          'shutdown_hard' => machine_options.bootstrap_options[:shutdown_hard] || false,
           'instance_id' => vm.id,
           'name' => vm.name,
           'state' => vm.state_str
@@ -167,7 +189,7 @@ class Driver < Chef::Provisioning::Driver
       machine_spec.reference['name'] = deployed.name
       machine_spec.reference['state'] = deployed.state_str
       nic_hash = deployed.to_hash
-      ip = nic_hash['VM']['TEMPLATE']['NIC'].is_a?(Array) ? nic_hash['VM']['TEMPLATE']['NIC'][0]['IP'] : deployed['TEMPLATE/NIC/IP']
+      ip = [ nic_hash['VM']['TEMPLATE']['NIC'] ].flatten[0]['IP']
       raise "Could not get IP from VM '#{deployed.name}'" if ip.nil? or ip.to_s.empty?
       machine_spec.reference['ip'] = ip
       machine = machine_for(machine_spec, machine_options)
@@ -223,7 +245,12 @@ class Driver < Chef::Provisioning::Driver
     instance = instance_for(machine_spec)
     if !instance.nil?
       action_handler.perform_action "powered off machine #{machine_spec.name} (#{machine_spec.reference['instance_id']})" do
-        instance.stop
+        if machine_spec.reference[:is_shutdown] or machine_options.bootstrap_options[:is_shutdown]
+          hard = machine_spec.reference[:shutdown_hard] || machine_options.bootstrap_options[:shutdown_hard] || false
+          instance.shutdown(hard)
+        else
+          instance.stop
+        end
       end
     else
       Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - nothing to do")      
@@ -423,11 +450,28 @@ class Driver < Chef::Provisioning::Driver
   protected
 
   def instance_for(machine_spec)
+    instance = nil
     if machine_spec.reference
       raise "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" +
           "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
-      @one.get_resource('vm', { :id => machine_spec.reference['instance_id'].to_i })
+      instance = @one.get_resource('vm', { :id => machine_spec.reference['instance_id'].to_i })
+    elsif machine_spec.location
+      raise "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" +
+          "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
+      instance = @one.get_resource('vm', { :id => machine_spec.location['server_id'].to_i })
+      if !instance.nil?
+        # Convert from previous driver
+        machine_spec.reference = {
+            'driver_version' => machine_spec.location['driver_version'],
+            'allocated_at' => machine_spec.location['allocated_at'],
+            'image_id' => machine_spec.location['image_id'],
+            'instance_id' => machine_spec.location['server_id'],
+            'name' => machine_spec.location['name'],
+            'state' => machine_spec.location['state']
+        }
+      end
     end
+    instance
   end
 
   def machine_for(machine_spec, machine_options)

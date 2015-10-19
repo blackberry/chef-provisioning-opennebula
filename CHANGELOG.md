@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 (9/23/2015)
+- Added one_user resource
+- Added support for machine shutdown.  Before 'machine :stop' would call the stop method on the VM,
+  now this behaviour can be changed to call vm.shutdown by specifying :bootstrap_options[:is_shutdown] = true
+- Added optional bootstrap_option flag [:unique_name] for validation of unique machine names in OpenNebula
+- Removed :instantiate from one_template resource, because it is a duplicate or 'machine :template'
+- Fixed warnings in providers regarding resource_names
+- Removed support for :ssh_execute_options => { :prefix => 'sudo '} in favour of :sudo => true
+- Added licencse headers
+- Modified permissions for downloaded qcow images to be 777
+- Added error message when :bootstrap_options are not defined
+- Added missing :cache attribute to one_image resource
+
+
 ## 0.2.5 (9/10/2015)
 
 - Fixes driver consistency concerns Tyler Ball brought up in [chef-provisioning issue #390](https://github.com/chef/chef-provisioning/issues/390)
@@ -7,11 +21,11 @@
 
 ```json
 :ssh_username => 'local',
-:ssh_options => {
-:keys_only => false,
-:forward_agent => true,
-:use_agent => true,
-:user_known_hosts_file => '/dev/null'
+	:ssh_options => {
+	:keys_only => false,
+	:forward_agent => true,
+	:use_agent => true,
+	:user_known_hosts_file => '/dev/null'
 },
 :ssh_execute_options => {
 :prefix => 'sudo '
