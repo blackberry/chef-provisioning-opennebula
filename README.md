@@ -250,7 +250,7 @@ end
 
 ```ruby
 one_image "snapshot-img" do
-  datastore_id "test-vm"
+  datastore_id 103
   image_file "/local/path/to/qcow/image/file"
   img_driver "qcow2"
   type "OS"

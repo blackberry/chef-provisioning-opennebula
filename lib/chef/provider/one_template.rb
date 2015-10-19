@@ -14,11 +14,12 @@ class Chef::Provider::OneTemplate < Chef::Provider::LWRPBase
     if !tpl.nil?
       action_handler.report_progress "Template #{new_resource.name} already exists - nothing to do"
     else
-      action_handler.perform_action "Creating template #{new_resource.name}" do
+      action_handler.perform_action "created template #{new_resource.name}" do
         template_str = File.read(new_resource.template_file) if new_resource.template_file
         template_str = new_driver.one.create_template(new_resource.template) if new_resource.template
         template_str << "\nNAME=\"#{new_resource.name}\""
         tpl = new_driver.one.allocate_template(new_resource.name, template_str)
+        @new_resource.updated_by_last_action(true)
       end
     end
   end
@@ -28,10 +29,11 @@ class Chef::Provider::OneTemplate < Chef::Provider::LWRPBase
     tpl = new_driver.one.get_resource('tpl', {:name => new_resource.name})
 
     if tpl.nil?
-      action_handler.report_progress "Template #{new_resource.name} does not exists - nothing to do"
+      action_handler.report_progress "template #{new_resource.name} does not exists - nothing to do"
     else
-      action_handler.perform_action "Deleting template #{new_resource.name}" do
+      action_handler.perform_action "deleted template #{new_resource.name}" do
         tpl.delete
+        @new_resource.updated_by_last_action(true)
       end
     end
   end
@@ -44,7 +46,7 @@ class Chef::Provider::OneTemplate < Chef::Provider::LWRPBase
     if tpl.nil?
       raise "Failed to instantiate template #{new_resource.name} - template does not exists"
     else
-      action_handler.perform_action "Creating instances from template #{new_resource.name}" do
+      action_handler.perform_action "created instances from template #{new_resource.name}" do
         if new_resource.instances 
           instance_array = new_resource.instances.split(',') if new_resource.instances.is_a?(String)
           instance_array = new_resource.instances if new_resource.instances.is_a?(Array)
@@ -56,14 +58,16 @@ class Chef::Provider::OneTemplate < Chef::Provider::LWRPBase
             else
               rc = tpl.instantiate(inst)
               raise "Failed to create instance from template #{new_resource.name}: #{rc.message}" if OpenNebula.is_error?(rc) 
-              action_handler.report_progress "Created instance: #{inst} - ID: #{rc}"
+              action_handler.report_progress "created instance: #{inst} - ID: #{rc}"
+              @new_resource.updated_by_last_action(true)
             end
           }
         else 
           new_resource.count.times {            
             rc = tpl.instantiate
             raise "Failed to create instance from template #{new_resource.name}: #{rc.message}" if OpenNebula.is_error?(rc) 
-            action_handler.report_progress "Created instance with ID: #{rc}"
+            action_handler.report_progress "created instance with ID: #{rc}"
+            @new_resource.updated_by_last_action(true)
           }
         end
       end
