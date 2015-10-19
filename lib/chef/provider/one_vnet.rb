@@ -11,7 +11,7 @@ class Chef::Provider::OneVnet < Chef::Provider::LWRPBase
   def exists?(filter)
     new_driver = get_driver
     @current_vnet = new_driver.one.get_resource('vnet', filter)
-    Chef::Log.info("VNET '#{filter}' exists: #{!@current_vnet.nil?}")
+    Chef::Log.debug("VNET '#{filter}' exists: #{!@current_vnet.nil?}")
     !@current_vnet.nil?
   end
 
@@ -51,7 +51,7 @@ class Chef::Provider::OneVnet < Chef::Provider::LWRPBase
     if exists?({:name => @new_resource.name})
       hash = @current_vnet.to_hash
       ar_pool = [hash['VNET']['AR_POOL']].flatten
-      Chef::Log.info(@current_vnet.to_hash)
+      Chef::Log.debug(@current_vnet.to_hash)
       same = false
       if @new_resource.ar_id and @new_resource.ar_id > -1
         ar_pool.each { |ar| 

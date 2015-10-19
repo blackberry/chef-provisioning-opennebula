@@ -227,11 +227,12 @@ one_image "bootstrap-img" do
 end
 ```
 
-#### 3. Attach a datablock image 'bootstrap-img' to a VM (test-vm)
+#### 3. Attach a datablock image 'bootstrap-img' to a VM (test-vm) and attach it as 'vde' target.  'target' is optional.
 
 ```ruby
 one_image "bootstrap-img" do
   machine_id 'test-vm'
+  target 'vde'
   action :attach
 end
 ```

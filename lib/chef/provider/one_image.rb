@@ -77,18 +77,19 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
 
   action :attach do
     raise "Missing attribute 'machine_id'" if !new_resource.machine_id
-    raise "Failed to attach disk - Image '#{new_resource.name}' does not exist" if  !exists?({:name => new_resource.name})
+    raise "Failed to attach disk - image '#{new_resource.name}' does not exist" if !exists?({:name => new_resource.name})
 
     vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
     raise "Failed to attach disk - VM '#{new_resource.machine}' does not exist" if vm.nil?
       action_handler.perform_action "attached disk #{new_resource.name} to #{vm.name}" do
         disk_hash = @image.to_hash
-        disk_tpl = <<-EOT
-DISK = [
-  IMAGE = #{disk_hash['IMAGE']['NAME']},
-  IMAGE_UNAME = #{disk_hash['IMAGE']['UNAME']}
-]
-EOT
+        disk_tpl = "DISK = [ "
+        disk_tpl << " IMAGE = #{disk_hash['IMAGE']['NAME']}, IMAGE_UNAME = #{disk_hash['IMAGE']['UNAME']}"
+        disk_tpl << ", TARGET = #{new_resource.target}" if new_resource.target
+        disk_tpl << ", DEV_PREFIX = #{new_resource.prefix}" if new_resource.prefix 
+        disk_tpl << ", CACHE = #{new_resource.cache}" if new_resource.cache
+        disk_tpl << "]"
+
         disk_id = new_driver.one.get_disk_id(vm, disk_hash['IMAGE']['NAME'])
         if !disk_id.nil?
           action_handler.report_progress "disk is already attached" if !disk_id.nil?
