@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 (10/5/2015)
+- fix bootstrap_options error
+- added rubocop test coverage
+
 ## 0.3.0 (9/23/2015)
 - Added one_user resource
 - Added support for machine shutdown.  Before 'machine :stop' would call the stop method on the VM,
