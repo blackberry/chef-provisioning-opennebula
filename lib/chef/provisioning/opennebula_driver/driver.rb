@@ -142,7 +142,7 @@ class Chef
           end
           # create if not exists
           if !machine_spec.location
-            action_handler.perform_action "Creating VM #{machine_spec.name}" do
+            action_handler.perform_action "created VM #{machine_spec.name}" do
               Chef::Log.debug(machine_options)
               tpl = @one.get_template(machine_spec.name, machine_options.bootstrap_options)
               vm = @one.allocate_vm(tpl)
@@ -185,7 +185,7 @@ class Chef
           deployed = nil
           id = machine_spec.location['server_id']
 
-          action_handler.perform_action "Waiting for VM to be ready" do
+          action_handler.perform_action "VM '#{machine_spec.location['name']}' is ready" do
             deployed = @one.wait_for_vm(id)
             machine_spec.location['name'] = deployed.name
             machine_spec.location['state'] = deployed.state_str
@@ -230,7 +230,7 @@ class Chef
         def destroy_machine(action_handler, machine_spec, machine_options)
           if machine_spec.location
             # machine_spec.name == machine_spec.location['name'] ???
-            action_handler.perform_action "Destroy machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
+            action_handler.perform_action "destroyed machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
               vm = @one.get_resource('vm', { :id => machine_spec.location['server_id'].to_i })
               if !vm.nil?
                 vm.delete
@@ -253,7 +253,7 @@ class Chef
         #     A set of options representing the desired state of the machine
         def stop_machine(action_handler, machine_spec, machine_options)
           if machine_spec.location
-            action_handler.perform_action "Power off machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
+            action_handler.perform_action "powered off machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
               vm = @one.get_resource('vm', { :id => machine_spec.location['server_id'].to_i })
               if !vm.nil?
                 vm.stop
@@ -277,7 +277,7 @@ class Chef
             # check if image already exists
             vm_img = @one.get_resource('img', { :id => img_spec.location['image_id'].to_i })
             if vm_img.nil?
-              action_handler.perform_action "IMAGE #{image_spec.name} does not exist. Creating..." do
+              action_handler.perform_action "image '#{image_spec.name}' does not exist. Creating..." do
                 image_spec.location = nil
               end
             else
@@ -288,7 +288,7 @@ class Chef
             end
           end
           if !img_spec.location
-            action_handler.perform_action "Create image #{image_spec.name} from machine ID #{machine_spec.location['server_id']} with options #{image_options.inspect}" do
+            action_handler.perform_action "created image #{image_spec.name} from machine ID #{machine_spec.location['server_id']} with options #{image_options.inspect}" do
               vm = @one.get_resource('vm', { :id => machine_spec.location['server_id'] })
               raise "allocate_image: VM does not exist" if vm.nil?
               # set default disk ID
@@ -326,7 +326,7 @@ class Chef
         def ready_image(action_handler, image_spec, image_options)
           img = @one.get_resource('img', { :id => image_spec.location['image_id'].to_i })
           raise "Image #{image_spec.name} (#{image_spec['image_id']}) does not exist" if img.nil?
-          action_handler.perform_action "Waiting for IMAGE to be ready" do
+          action_handler.perform_action "image #{image_spec.name} is ready" do
             deployed = @one.wait_for_img(img.name, img.id)
             image_spec.location['state'] = deployed.state_str
           end
@@ -344,9 +344,9 @@ class Chef
         def destroy_image(action_handler, image_spec, image_options)
           img = @one.get_resource('img', { :id => image_spec.location['image_id'].to_i })
           if img.nil?
-            action_handler.report_progress "Image #{image_spec.name} (#{image_spec.location['image_id']}) does not exist - nothing to do"
+            action_handler.report_progress "image #{image_spec.name} (#{image_spec.location['image_id']}) does not exist - nothing to do"
           else
-            action_handler.perform_action "Deleting image #{image_spec.name} (#{image_spec.location['image_id']})" do
+            action_handler.perform_action "deleted image #{image_spec.name} (#{image_spec.location['image_id']})" do
               rc = img.delete
               raise "Failed to delete image '#{image_spec.name}' : #{rc.message}" if OpenNebula.is_error?(rc)
               # TODO: Check for VM in use and delete them too

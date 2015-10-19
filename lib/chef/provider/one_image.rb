@@ -16,7 +16,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     new_driver = get_driver
     img = new_driver.one.get_resource('img', {:name => new_resource.name})
     if img.nil?
-      action_handler.perform_action "Allocating image '#{new_resource.name}'" do
+      action_handler.perform_action "allocated image '#{new_resource.name}'" do
         img = new_driver.one.allocate_img(
           new_resource.name, 
           new_resource.size, 
@@ -27,9 +27,10 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
           new_resource.prefix,
           new_resource.persistent)
         Chef::Log.info("Image '#{new_resource.name}' allocate in initial state #{img.state_str}")
+        @new_resource.updated_by_last_action(true)
       end
     else
-      action_handler.report_progress "Image '#{new_resource.name}' already exists - nothing to do"
+      action_handler.report_progress "image '#{new_resource.name}' already exists - nothing to do"
     end
     img
   end
@@ -38,11 +39,12 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     img = action_allocate
     case img.state_str
     when 'INIT', 'LOCKED'
-      action_handler.perform_action "Waiting for image '#{new_resource.name}' to be READY" do
+      action_handler.perform_action "wait for image '#{new_resource.name}' to be READY" do
         current_driver.one.wait_for_img(new_resource.name, img.id)
+        @new_resource.updated_by_last_action(true)
       end
     when 'READY', 'USED', 'USED_PERS'
-      action_handler.report_progress "Image '#{new_resource.name}' is already in #{img.state_str} state - nothing to do"
+      action_handler.report_progress "image '#{new_resource.name}' is already in #{img.state_str} state - nothing to do"
     else
       raise "Image #{new_resource.name} is in unexpected state '#{img.state_str}'"
     end
@@ -52,12 +54,13 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     new_driver = get_driver
     img = new_driver.one.get_resource('img', {:name => new_resource.name})
     if !img.nil?
-      action_handler.perform_action "Deleting image '#{new_resource.name}'" do
+      action_handler.perform_action "deleted image '#{new_resource.name}'" do
         rc = img.delete
         raise "Failed to delete image '#{new_resource.name}' : #{rc.message}" if OpenNebula.is_error?(rc)
+        @new_resource.updated_by_last_action(true)
       end
     else
-      action_handler.report_progress "Image '#{new_resource.name}' does not exist - nothing to do"
+      action_handler.report_progress "image '#{new_resource.name}' does not exist - nothing to do"
     end
   end
 
@@ -68,7 +71,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
 
     if !img.nil? and !vm.nil? 
-      action_handler.perform_action "Attach disk #{new_resource.name} to #{vm.name}" do
+      action_handler.perform_action "attached disk #{new_resource.name} to #{vm.name}" do
         disk_hash = img.to_hash
         disk_tpl = <<-EOT
 DISK = [
@@ -78,12 +81,13 @@ DISK = [
 EOT
         disk_id = new_driver.one.get_disk_id(vm, disk_hash['IMAGE']['NAME'])
         if !disk_id.nil?
-          action_handler.report_progress "Disk is already attached" if !disk_id.nil?
+          action_handler.report_progress "disk is already attached" if !disk_id.nil?
         else disk_id.nil?
-          action_handler.report_progress "Disk not attached. Attaching..."
+          action_handler.report_progress "disk not attached, attaching..."
           rc = vm.disk_attach(disk_tpl)
           new_driver.one.wait_for_vm(vm.id)
           raise "Failed to attach disk to VM '#{vm.name}': #{rc.message}" if OpenNebula.is_error?(rc)
+          @new_resource.updated_by_last_action(true)
         end
       end
     else
@@ -100,11 +104,11 @@ EOT
     img = new_driver.one.get_resource('img', {:name => new_resource.name})
     
     if !img.nil?
-      action_handler.report_progress "Snapshot image '#{new_resource.name}' already exists - nothing to do"
+      action_handler.report_progress "snapshot image '#{new_resource.name}' already exists - nothing to do"
     else
       raise "Failed to create snapshot - VM '#{new_resource.machine_id}' does not exist" if vm.nil?
 
-      action_handler.perform_action "Creating snapshot from '#{new_resource.machine_id}'" do
+      action_handler.perform_action "created snapshot from '#{new_resource.machine_id}'" do
         disk_id = new_resource.disk_id.is_a?(Integer) ? new_resource.disk_id : new_driver.one.get_disk_id(vm, new_resource.disk_id)
         raise "No disk '#{new_resource.disk_id}' found on '#{vm.name}'" if disk_id.nil?
 
@@ -113,9 +117,10 @@ EOT
 
         new_img = new_driver.one.wait_for_img(new_resource.name, new_img)
         if new_resource.persistent
-          action_handler.report_progress "Making image '#{new_resource.name}' persistent"
+          action_handler.report_progress "make image '#{new_resource.name}' persistent"
           new_img.persistent 
         end
+        @new_resource.updated_by_last_action(true)
       end
     end
   end
@@ -127,49 +132,55 @@ EOT
 
     new_driver = get_driver
 
-    file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
-    description = @new_resource.description || "#{@new_resource.name} image"
-    type = @new_resource.type || 'OS'
-    driver = @new_resource.img_driver || 'qcow2'
-    
-    begin
-      pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), :pgroup=>true)
-      raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
+    action_handler.perform_action "uploaded image '#{@new_resource.image_file}'" do
+      file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
+      description = @new_resource.description || "#{@new_resource.name} image"
+      driver = @new_resource.img_driver || 'qcow2'
+      
+      begin
+        pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup=>true)
+        raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
 
-      new_driver.one.upload_img(
-        @new_resource.name,
-        @new_resource.datastore_id,
-        file_url,
-        driver,
-        description,
-        type,
-        @new_resource.prefix,
-        @new_resource.persistent,
-        @new_resource.public,
-        @new_resource.target,
-        @new_resource.disk_type,
-        @new_resource.source,
-        @new_resource.size,
-        @new_resource.fs_type)
-    ensure
-      system("sudo kill -9 -#{pid}")
+        new_driver.one.upload_img(
+          @new_resource.name,
+          @new_resource.datastore_id,
+          file_url,
+          driver,
+          description,
+          @new_resource.type,
+          @new_resource.prefix,
+          @new_resource.persistent,
+          @new_resource.public,
+          @new_resource.target,
+          @new_resource.disk_type,
+          @new_resource.source,
+          @new_resource.size,
+          @new_resource.fs_type)
+
+        @new_resource.updated_by_last_action(true)
+      ensure
+        system("sudo kill -9 -#{pid}")
+      end
     end
   end
 
   action :download do
     new_driver = get_driver
 
-    download_url = ENV['ONE_DOWNLOAD'] || @new_resource.download_url
-    raise "'download_url' is a required attribute.  You can get the value for 'download_url' by loging into your OpenNebula CLI and reading the ONE_DOWNLOAD environment variable" if download_url.nil?
-    image = new_driver.one.get_resource('img', !@new_resource.image_id.nil? ? {:id => @new_resource.image_id } : {:name => @new_resource.name}) 
-    raise "Image 'NAME: #{@new_resource.name}/ID: #{@new_resource.image_id}' does not exist" if image.nil?
-    local_path = @new_resource.image_file || ::File.join(Chef::Config[:file_cache_path], "#{@new_resource.name}.qcow2")
-    raise "Will not overwrite an existing file: #{local_path}" if ::File.exist?(local_path)
-    command = "curl -o #{local_path} #{download_url}/#{::File.basename(::File.dirname(image['SOURCE']))}/#{::File.basename(image['SOURCE'])}"
-    rc = system(command)
-    raise rc if rc.nil?
-    raise "ERROR: #{rc}" if !rc
-    Chef::Log.info("Image downloaded from OpenNebula to: #{local_path}")
+    action_handler.perform_action "downloaded image '#{@new_resource.image_file}" do
+      download_url = ENV['ONE_DOWNLOAD'] || @new_resource.download_url
+      raise "'download_url' is a required attribute.  You can get the value for 'download_url' by loging into your OpenNebula CLI and reading the ONE_DOWNLOAD environment variable" if download_url.nil?
+      image = new_driver.one.get_resource('img', !@new_resource.image_id.nil? ? {:id => @new_resource.image_id } : {:name => @new_resource.name}) 
+      raise "Image 'NAME: #{@new_resource.name}/ID: #{@new_resource.image_id}' does not exist" if image.nil?
+      local_path = @new_resource.image_file || ::File.join(Chef::Config[:file_cache_path], "#{@new_resource.name}.qcow2")
+      raise "Will not overwrite an existing file: #{local_path}" if ::File.exist?(local_path)
+      command = "curl -o #{local_path} #{download_url}/#{::File.basename(::File.dirname(image['SOURCE']))}/#{::File.basename(image['SOURCE'])}"
+      rc = system(command)
+      raise rc if rc.nil?
+      raise "ERROR: #{rc}" if !rc
+      Chef::Log.info("Image downloaded from OpenNebula to: #{local_path}")
+      @new_resource.updated_by_last_action(true)
+    end
   end
 
   protected

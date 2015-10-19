@@ -56,7 +56,7 @@ class OneLib
         return res
       end
     end
-    Chef::Log.warn("No resource found... #{filter}")
+    Chef::Log.debug("No resource found... #{filter}")
     nil
   end
 
@@ -95,11 +95,11 @@ class OneLib
     template = <<-EOTPL
 NAME        = #{name}
 PATH        = \"#{path}\"
-DESCRIPTION = \"#{description}\"
 DRIVER      = #{driver}
-TYPE        = #{type}
+DESCRIPTION = \"#{description}\"
 EOTPL
 
+    template << "TYPE        = #{type}\n" if !type.nil?
     template << "PERSISTENT  = YES\n" if !persistent.nil? and persistent
     template << "DEV_PREFIX  = #{prefix}\n" if !prefix.nil?
     template << "PUBLIC      = YES\n" if !pub.nil? and pub
@@ -108,14 +108,15 @@ EOTPL
     template << "SOURCE      = #{source}\n" if !source.nil?
     template << "SIZE        = #{size}" if !size.nil?
     template << "FSTYPE      = #{fstype}\n" if !fstype.nil?
-    
-    Chef::Log.debug(template)
+
+    Chef::Log.debug("\n#{template}")
 
     image = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
     raise image.message if OpenNebula.is_error?(image)
     rc = image.allocate(template, ds_id)
     raise rc.message if OpenNebula.is_error?(rc)
-    Chef::Log.info("Uploaded image #{name} (#{image.id})")
+    Chef::Log.debug("Waiting for image '#{name}' (#{image.id}) to be ready")
+    wait_for_img(name, image.id)
   end
 
   def allocate_img(name, size, ds_id, type = 'DATABLOCK', fstype = 'ext2', driver = 'qcow2', prefix = 'vd', persistent = false)
