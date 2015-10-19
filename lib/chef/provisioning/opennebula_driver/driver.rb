@@ -142,6 +142,7 @@ class Chef
           end
           # create if not exists
           if !machine_spec.location
+            vm = nil
             action_handler.perform_action "created VM #{machine_spec.name}" do
               Chef::Log.debug(machine_options)
               tpl = @one.get_template(machine_spec.name, machine_options.bootstrap_options)
@@ -185,7 +186,7 @@ class Chef
           deployed = nil
           id = machine_spec.location['server_id']
 
-          action_handler.perform_action "VM '#{machine_spec.location['name']}' is ready" do
+          action_handler.perform_action "VM '#{machine_spec.name}' is ready" do
             deployed = @one.wait_for_vm(id)
             machine_spec.location['name'] = deployed.name
             machine_spec.location['state'] = deployed.state_str
@@ -230,13 +231,13 @@ class Chef
         def destroy_machine(action_handler, machine_spec, machine_options)
           if machine_spec.location
             # machine_spec.name == machine_spec.location['name'] ???
-            action_handler.perform_action "destroyed machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
-              vm = @one.get_resource('vm', { :id => machine_spec.location['server_id'].to_i })
-              if !vm.nil?
+            vm = @one.get_resource('vm', { :id => machine_spec.location['server_id'].to_i })
+            if !vm.nil?
+              action_handler.perform_action "destroyed machine #{machine_spec.name} (#{machine_spec.location['server_id']})" do
                 vm.delete
-              else
-                Chef::Log.info("VM #{machine_spec.name} (#{machine_spec.location['server_id']}) does not exist.")
               end
+            else
+              Chef::Log.info("VM #{machine_spec.name} (#{machine_spec.location['server_id']}) does not exist.")
             end
             strategy = convergence_strategy_for(machine_spec, machine_options)
             strategy.cleanup_convergence(action_handler, machine_spec)

@@ -1,10 +1,12 @@
 chef-provisioning-opennebula
 ============================
 
-This is the implementation of the OpenNebula driver for chef-provisioning.  It also comes with two additional resources:
+This is the implementation of the OpenNebula driver for chef-provisioning.  It also comes with additional chef resources to manage OpenNebula:
 
 * Template  (one_template)
 * Image (one_image)
+* VNET (one_vnet)
+* Lease (one_vnet_lease)
 
 Setup
 -----
@@ -170,11 +172,11 @@ This resource will manage images within OpenNebula.
   :name => String name of the image to be created or to be used
   :size => Integer size of the image to allocate in MB
   :datastore_id => Integer id of the datastore in OpenNebula to use 
-  :type => ['OS', 'CDROM', 'DATABLOCK', 'KERNEL', 'RAMDISK', 'CONTEXT'] type of the image to create; default: 'DATABLOCK'
+  :type => ['OS', 'CDROM', 'DATABLOCK', 'KERNEL', 'RAMDISK', 'CONTEXT'] type of the image to create
   :description => String description of the image
-  :fs_type => String type of the filesystem to create; default: 'ext2'
-  :img_driver => String driver type; default: 'qcow2'
-  :prefix => String prefix; default: 'vd'
+  :fs_type => String type of the filesystem to create
+  :img_driver => String driver type
+  :prefix => String prefix
   :persistent => [ TrueClass, FalseClass] flag indicating if the image should be persistent; default: false
   :public => [ TrueClass, FalseClass ] flag indicating if the image is public
   :disk_type => String Image disk type eq. ext3
@@ -195,12 +197,22 @@ This resource will manage images within OpenNebula.
   default_action :create
 ```
 
+```ruby
+Default attribute values ONLY for image :create and :allocate actions
+          :type = 'OS' 
+          :fs_type = 'ext2'
+          :img_driver = 'qcow2'
+          :prefix = 'vd'
+          :persistent = false
+```
+
 ### Examples
 
-#### 1. Create a datablock image with size 10Gb
+#### 1. Create a datablock image with size 10Gb. 
 
 ```ruby
 one_image "bootstrap-img" do
+  type "DATABLOCK"
   size 10240
   datastore_id 103
   action :create
@@ -275,6 +287,128 @@ one_image "boggi-test-img" do
   image_id 12345
   image_file "/tmp/image.qcow2"
   action :download
+end
+```
+
+## one_vnet
+
+This resource will allow to create and delete OpenNebula vnets.
+
+### Attributes
+
+```ruby
+  :name => String name of the vnet
+  :vnet_id => Integer ID of the vnet that is modified
+  :network => Integer ID of the vnet from which a new vnet will be reserved
+  :size => Integer size of the new vnet
+  :ar_id => Integer address range identifier
+  :mac_ip => String ip or mac address
+  :template_file => String local file containing the template of a new vnet
+  :cluster_id => Integer cluster in which to create a vnet
+```
+
+### Actions
+
+```ruby
+  actions :create, :delete, :reserve
+  default_action :reserve
+```
+
+### Examples
+
+#### 1. Reserver vnet 'boggi_vnet' from parent vnet 12345 with default size 1
+
+```ruby
+one_vnet "boggi_vnet" do
+    network 12345
+    action :reserve
+end
+```
+
+#### 2. Reserver vnet 'boggi_vnet' from parent vnet 12345 with size 100
+
+```ruby
+one_vnet "boggi_vnet" do
+    network 12345
+    size 100
+    action :reserve
+end
+```
+
+#### 3. Create a VNET from template file in cluster 12345.  This requires the template file not to have NAME variable populated.  The resource will add NAME attribute to the template with the value being the name of the resource.
+
+```ruby
+one_vnet "boggi_vnet" do
+    template_file "/tmp/my_vnet.tpl"
+    cluster_id 12345
+    action :create
+end
+```
+
+#### 4. Delete a vnet 'boggi_vnet'.  NOTE!!! The vnet cannot have any leases in order to be deleted.
+
+```ruby
+one_vnet "boggi_vnet" do
+    action :delete
+end
+```
+
+#### 5. Delete vnet by its ID number (12345).  NOTE!!! The vnet cannot have any leases in order to be deleted.
+
+```ruby
+one_vnet "boggi_vnet" do
+    vnet_id 12345
+    action :delete
+end
+```
+
+## one_vnet_lease
+
+This resource will allow to hold and release leases within OpenNebula vnets.
+
+### Attributes
+
+```ruby
+  :name => String ip or mac address to hold/release
+  :vnet_id => Integer ID of the vnet that is modified
+  :ar_id => Integer address range identifier, where to allocate the address
+  :mac_ip => String ip or mac address to hold/release, same as :name
+```
+
+### Actions
+
+```ruby
+  actions :hold, :release
+  default_action :hold
+```
+
+### Examples
+
+#### 1. Hold a lease on a specific IP (1.2.3.4) in 'boggi_vnet' (6789)
+
+```ruby
+one_vnet_lease "1.2.3.4" do
+    vnet "boggi_vnet"
+    action :hold
+end
+```
+
+#### 2. Hold a lease on a specific MAC (00:00:00:00:01) in a specific address range of 'boggi_vnet' (6789).  Assuming that vnet 6789 has more than one address range.
+
+```ruby
+one_vnet_lease "00:00:00:00:01" do
+    vnet "boggi_vnet"
+    ar_id 1
+    action :hold
+end
+```
+
+#### 3. Release a lease on a specific IP (1.2.3.4) in 'boggi_vnet' (6789). If the IP is already allocated to a VM, that VM must be deleted first, otherwise it will throw an error.
+
+```ruby
+one_vnet_lease "1.2.3.4" do
+    vnet "boggi_vnet"
+    action :release
 end
 ```
 
