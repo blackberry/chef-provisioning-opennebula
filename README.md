@@ -41,8 +41,13 @@ machine_options {
 		:template_file => String location of the VM template file,
 		:template_name => String name of the OpenNebula template to use
 		:template_id => Integer id of the OpenNebula template to use
+		:template_options => Hash values to be overwriten/added in VM template
+		:enforce_chef_fqdn => [TrueClass, FalseClass] flag indicating if fqdn names should be used for machine names
+		:is_shutdown => [TrueClass, FalseClass] call vm.shutodwn instead of vm.stop during :stop action
+		:shutdown_hard => [TrueClass, FalseClass] flag indicating hard or soft shutdown
 	},
-	:ssh_user => 'local',
+	:sudo => true,
+	:ssh_username => 'local',
 	:ssh_options => {
 	  Hash containing SSH options as specified by net-ssh gem
 	  please see https://github.com/net-ssh/net-ssh for all options
@@ -54,9 +59,6 @@ machine_options {
 	  :forward_agent => true,
 	  :use_agent => true,
 	  :user_known_hosts_file => '/dev/null'
-	},
-	:ssh_execute_options => {
-	  :prefix => 'sudo '
 	}
 }
 ```
@@ -73,8 +75,6 @@ This resource will allow to create and delete OpenNebula templates.
 ```ruby
   :template => Hash defining OpenNebula template
   :template_file => String location of the VM template file
-  :count => Integer number of instances to create
-  :instances => [String, Array] name(s) for the instances to create
 ```
 
 ### Actions
@@ -138,27 +138,6 @@ end
 ```ruby
 one_template "my_one_template" do
     action :delete
-end
-```
-
-#### 4. Create an OpenNebula template from file and also create 2 VM instances from that template.
-The resulting names of the VMs will be ```<template_name>-<one_id>``` where ```one_id``` is an OpenNebula sequence number.
-
-```ruby
-one_template "my_one_template" do
-	template_file "/opt/one/templates/my_template.tpl"
-	count 2
-    action [:create, :instantiate]
-end
-```
-
-#### 5. Create an OpenNebula template from file and also create 2 VM instances from that template with specific names.
-
-```ruby
-one_template "my_one_template" do
-	template_file "/opt/one/templates/my_template.tpl"
-	instances ['boggi-vm-1', 'boggi-vm-2']
-    action [:create, :instantiate]
 end
 ```
 
@@ -410,6 +389,56 @@ end
 one_vnet_lease "1.2.3.4" do
     vnet "boggi_vnet"
     action :release
+end
+```
+
+## one_user
+
+This resource will allow to create/delete/update OpenNebula users. Right now it does not have the full functionality as `oneuser`, but it can add key=value pairs to an existing user so that sensitive data could be stored there.
+
+### Attributes
+
+```ruby
+  :name => String ip or mac address to hold/release
+  :password => String password
+  :user_id => Integer user id
+  :template_file => String local template file defining a user 
+  :template => Hash with key/value pairs that will be added to the user
+  :append => Boolean append to template or overwrite
+```
+
+### Actions
+
+```ruby
+  actions :create, :delete, :update
+  default_action :update
+```
+
+### Examples
+
+#### 1. Create a new user from template file, assuming the current ONE user has the permission to do so.
+
+```ruby
+one_user "boggi" do
+    template_file "<local_template_file>"
+    action :create
+end
+```
+
+#### 2. Delete 'boggi' user, assuming the current ONE user has the permission to do so.
+
+```ruby
+one_user "boggi" do
+    action :delete
+end
+```
+
+#### 3. Add new key/value pairs to user 'boggi', assuming the current ONE user has the permission to do so.
+
+```ruby
+one_user "boggi" do
+    template ({"BOGGI" => "MAGIC"})
+    action :update
 end
 ```
 

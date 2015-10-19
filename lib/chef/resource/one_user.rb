@@ -12,22 +12,26 @@
 #See the License for the specific language governing permissions and
 #limitations under the License.
 
-require 'chef/provider/one_template'
+require 'chef/provider/one_user'
 
-class Chef::Resource::OneTemplate < Chef::Resource::LWRPBase
-  self.resource_name = 'one_template'
+class Chef::Resource::OneUser < Chef::Resource::LWRPBase
+  self.resource_name = 'one_user'
 
-  attribute :template, :kind_of => Hash
+  attribute :name, :kind_of => String, :name_attribute => true
+  attribute :user_id, :kind_of => Integer
+  attribute :password, :kind_of => String
+  attribute :groups, :kind_of => Array
+  attribute :quotas, :kind_of => Array
   attribute :template_file, :kind_of => String
+  attribute :template, :kind_of => Hash
+  attribute :append, :kind_of => [TrueClass, FalseClass], :default => true
   attribute :driver
 
-  actions :create, :delete
-  default_action :create
-    
+  actions :update, :create, :delete
+  default_action :update
+
   def initialize(*args)
     super
-    @chef_environment = run_context.cheffish.current_environment
-    @chef_server = run_context.cheffish.current_chef_server
     @driver = run_context.chef_provisioning.current_driver
   end
 end

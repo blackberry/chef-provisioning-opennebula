@@ -1,5 +1,21 @@
+# Copyright 2015, BlackBerry, Inc.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 class Chef::Provider::OneImage < Chef::Provider::LWRPBase
   use_inline_resources
+
+  provides :one_image
 
   attr :image
 
@@ -14,14 +30,14 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
     @action_handler ||= Chef::Provisioning::ChefProviderActionHandler.new(self)
   end
 
-  def exists?(filter)
+  def exists?
     new_driver = get_driver
-    @image = new_driver.one.get_resource('img', filter)
+    @image = new_driver.one.get_resource('img', {:name => new_resource.name})
     !@image.nil?
   end
 
   action :allocate do
-    if exists?({:name => new_resource.name}) 
+    if exists?
       action_handler.report_progress "image '#{new_resource.name}' already exists - nothing to do"
     else
       raise "'size' must be specified" if !new_resource.size
@@ -60,7 +76,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
   end
 
   action :destroy do
-    if exists?({:name => new_resource.name}) 
+    if exists?
       action_handler.perform_action "deleted image '#{new_resource.name}'" do
         rc = @image.delete
         raise "Failed to delete image '#{new_resource.name}' : #{rc.message}" if OpenNebula.is_error?(rc)
@@ -77,7 +93,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
 
   action :attach do
     raise "Missing attribute 'machine_id'" if !new_resource.machine_id
-    raise "Failed to attach disk - image '#{new_resource.name}' does not exist" if !exists?({:name => new_resource.name})
+    raise "Failed to attach disk - image '#{new_resource.name}' does not exist" if !exists?
 
     vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
     raise "Failed to attach disk - VM '#{new_resource.machine}' does not exist" if vm.nil?
@@ -105,7 +121,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
 
   action :snapshot do
     raise "Missing attribute 'machine_id'" if !new_resource.machine_id
-    if exists?({:name => new_resource.name})
+    if exists?
       action_handler.report_progress "snapshot image '#{new_resource.name}' already exists - nothing to do"
     else
       vm = new_driver.one.get_resource('vm', {new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id})
@@ -134,12 +150,12 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
 
     file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
     description = @new_resource.description || "#{@new_resource.name} image"
-    driver = @new_resource.img_driver || 'qcow2'
+    image_driver = @new_resource.img_driver || 'qcow2'
 
-    if exists?({:name => new_resource.name})
+    if exists?
       if @image.name == @new_resource.name and 
          @image['PATH'] == file_url and 
-         @image['TEMPLATE/DRIVER'] == driver and 
+         @image['TEMPLATE/DRIVER'] == image_driver and 
          @image['TEMPLATE/DESCRIPTION'] == description and 
          @image['DATASTORE_ID'] == @new_resource.datastore_id.to_s
         action_handler.report_progress("image '#{@new_resource.name}' (ID: #{@image.id}) already exists - nothing to do")
@@ -147,7 +163,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
         raise "image '#{new_resource.name}' already exists, but it is not the same image"
       end
     else
-      action_handler.perform_action "uploaded image '#{@new_resource.image_file}'" do
+      action_handler.perform_action "upload image '#{@new_resource.image_file}'" do
         begin
           pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup=>true)
           raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
@@ -155,7 +171,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
             @new_resource.name,
             @new_resource.datastore_id,
             file_url,
-            driver,
+            image_driver,
             description,
             @new_resource.type,
             @new_resource.prefix,
@@ -189,6 +205,7 @@ class Chef::Provider::OneImage < Chef::Provider::LWRPBase
       rc = system(command)
       raise rc if rc.nil?
       raise "ERROR: #{rc}" if !rc
+      system("chmod 777 #{local_path}")
       Chef::Log.info("Image downloaded from OpenNebula to: #{local_path}")
       @new_resource.updated_by_last_action(true)
     end
