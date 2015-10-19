@@ -4,9 +4,7 @@ require 'opennebula/document'
 
 module OpenNebula
     class CustomObject < Document
-
         DOCUMENT_TYPE = 555
-
     end
 end
 
@@ -92,6 +90,34 @@ class OneLib
     vm
   end
 
+  def upload_img(name, ds_id, path, driver = 'qcow2', description, type, prefix, persistent, pub, target, disk_type, source, size, fstype)
+    
+    template = <<-EOTPL
+NAME        = #{name}
+PATH        = \"#{path}\"
+DESCRIPTION = \"#{description}\"
+DRIVER      = #{driver}
+TYPE        = #{type}
+EOTPL
+
+    template << "PERSISTENT  = YES\n" if !persistent.nil? and persistent
+    template << "DEV_PREFIX  = #{prefix}\n" if !prefix.nil?
+    template << "PUBLIC      = YES\n" if !pub.nil? and pub
+    template << "TARGET      = #{target}\n" if !target.nil?
+    template << "DISK_TYPE   = #{disk_type}\n" if !disk_type.nil?
+    template << "SOURCE      = #{source}\n" if !source.nil?
+    template << "SIZE        = #{size}" if !size.nil?
+    template << "FSTYPE      = #{fstype}\n" if !fstype.nil?
+    
+    Chef::Log.debug(template)
+
+    image = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
+    raise image.message if OpenNebula.is_error?(image)
+    rc = image.allocate(template, ds_id)
+    raise rc.message if OpenNebula.is_error?(rc)
+    Chef::Log.info("Uploaded image #{name} (#{image.id})")
+  end
+
   def allocate_img(name, size, ds_id, type = 'DATABLOCK', fstype = 'ext2', driver = 'qcow2', prefix = 'vd', persistent = false)
     img, rc = nil, nil
 
@@ -106,23 +132,14 @@ DRIVER     = #{driver}
 DEV_PREFIX = #{prefix}
 EOT
 
-    2.times {
-      img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
-      rc = img
-      if !OpenNebula.is_error?(rc)
-        rc = img.allocate(template, ds_id)
-        if !OpenNebula.is_error?(rc)
-          break
-        else
-          Chef::Log.error(rc.message)
-        end
-      else
-        Chef::Log.error(rc.message)
-      end
-      sleep(3)
-    }
-    Chef::Log.debug("Allocated disk image #{name} (#{img.id})") if !OpenNebula.is_error?(rc)
-    raise "Failed to allocate image #{name}" if OpenNebula.is_error?(rc)
+    img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
+    rc = img
+    raise rc.message if OpenNebula.is_error?(rc)
+
+    rc = img.allocate(template, ds_id)
+    raise rc.message if OpenNebula.is_error?(rc)
+
+    Chef::Log.debug("Allocated disk image #{name} (#{img.id})")
     img
   end
 

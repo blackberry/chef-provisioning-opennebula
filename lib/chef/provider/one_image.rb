@@ -120,6 +120,58 @@ EOT
     end
   end
 
+  action :upload do
+    raise "'datastore_id' is required" if @new_resource.datastore_id.nil?
+    raise "'image_file' is required" if @new_resource.image_file.nil?
+    raise "image_file #{@new_resource.image_file} does not exist" if !::File.exists? @new_resource.image_file
+
+    new_driver = get_driver
+
+    file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
+    description = @new_resource.description || "#{@new_resource.name} image"
+    type = @new_resource.type || 'OS'
+    driver = @new_resource.img_driver || 'qcow2'
+    
+    begin
+      pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), :pgroup=>true)
+      raise "Failed to start 'SimpleHTTPServer'" if pid.nil?
+
+      new_driver.one.upload_img(
+        @new_resource.name,
+        @new_resource.datastore_id,
+        file_url,
+        driver,
+        description,
+        type,
+        @new_resource.prefix,
+        @new_resource.persistent,
+        @new_resource.public,
+        @new_resource.target,
+        @new_resource.disk_type,
+        @new_resource.source,
+        @new_resource.size,
+        @new_resource.fs_type)
+    ensure
+      system("sudo kill -9 -#{pid}")
+    end
+  end
+
+  action :download do
+    new_driver = get_driver
+
+    download_url = ENV['ONE_DOWNLOAD'] || @new_resource.download_url
+    raise "'download_url' is a required attribute.  You can get the value for 'download_url' by loging into your OpenNebula CLI and reading the ONE_DOWNLOAD environment variable" if download_url.nil?
+    image = new_driver.one.get_resource('img', !@new_resource.image_id.nil? ? {:id => @new_resource.image_id } : {:name => @new_resource.name}) 
+    raise "Image 'NAME: #{@new_resource.name}/ID: #{@new_resource.image_id}' does not exist" if image.nil?
+    local_path = @new_resource.image_file || ::File.join(Chef::Config[:file_cache_path], "#{@new_resource.name}.qcow2")
+    raise "Will not overwrite an existing file: #{local_path}" if ::File.exist?(local_path)
+    command = "curl -o #{local_path} #{download_url}/#{::File.basename(::File.dirname(image['SOURCE']))}/#{::File.basename(image['SOURCE'])}"
+    rc = system(command)
+    raise rc if rc.nil?
+    raise "ERROR: #{rc}" if !rc
+    Chef::Log.info("Image downloaded from OpenNebula to: #{local_path}")
+  end
+
   protected
 
   def get_driver
