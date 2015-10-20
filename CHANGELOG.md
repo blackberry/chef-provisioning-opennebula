@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2 (10/8/2015)
+- Fix rogue property bug
+
 ## 0.3.1 (10/5/2015)
 - fix bootstrap_options error
 - added rubocop test coverage

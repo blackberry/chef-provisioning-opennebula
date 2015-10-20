@@ -273,7 +273,7 @@ EOT
             recursive_merge(tpl_updates, options[:user_variables])
           end
           recursive_merge(t_hash, tpl_updates) unless tpl_updates.empty?
-          t_hash['NAME'] = options[:one_vm_name_fqdn] ? name : name.split('.')[0]
+          t_hash['NAME'] = options[:enforce_chef_fqdn] ? name : name.split('.')[0]
           tpl = create_template(t_hash)
           Chef::Log.debug(tpl)
           tpl
