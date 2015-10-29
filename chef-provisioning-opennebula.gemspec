@@ -29,7 +29,7 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'chef'
   s.add_dependency 'chef-provisioning', '> 0.15'
-  s.add_dependency 'opennebula', '~> 4.10'
+  s.add_dependency 'opennebula', '~> 4.10', '< 4.14'
 
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'rake'

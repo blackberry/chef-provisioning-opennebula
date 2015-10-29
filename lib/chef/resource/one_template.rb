@@ -26,7 +26,7 @@ class Chef
     # Implementation of Resource class.
     #
     class OneTemplate < Chef::Resource::LWRPBase
-      self.resource_name = 'one_template'
+      resource_name :one_template
 
       attribute :template, :kind_of => Hash
       attribute :template_file, :kind_of => String

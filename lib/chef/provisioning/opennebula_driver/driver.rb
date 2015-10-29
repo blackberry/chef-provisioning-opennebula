@@ -20,6 +20,7 @@ require 'chef/provisioning/convergence_strategy/no_converge'
 require 'chef/provisioning/transport/ssh'
 require 'chef/provisioning/opennebula_driver/version'
 require 'chef/provisioning/opennebula_driver/one_lib'
+require 'chef/provisioning/opennebula_driver/credentials'
 
 class Chef
   module Provisioning
@@ -74,7 +75,8 @@ class Chef
         #  endpoint from ENV['ONE_XMLRPC']
         #
         # driver_url format:
-        #   opennebula:<endpoint>
+        #   opennebula:<endpoint>:<profile>
+        # where <profile> points to a one_auth file in ENV['HOME']/.one/<profile>
         #
         # driver_options:
         #   credentials: bbsl-auto:text_pass  credentials has precedence over secret_file
@@ -82,8 +84,14 @@ class Chef
         #
         def initialize(driver_url, config)
           super
-          credentials = driver_options[:credentials] || File.read(driver_options[:secret_file]).strip rescue nil
-          @one = OneLib.new(credentials, driver_url.split(':', 2)[1], driver_options[:one_options] || {})
+          scan = driver_url.match(%r/(opennebula):(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
+          endpoint = scan[2]
+          profile_name = scan[3]
+          fail "OpenNebula endpoint must be specified in 'driver_url': #{driver_url}" if endpoint.nil?
+
+          profile = profile_name ? one_credentials[profile_name] : one_credentials.default
+          Chef::Log.warn("':credentials' and ':secret_file' will be deprecated in next version in favour of 'opennebula:<endpoint>:<profile_name>'") if profile_name.nil?
+          @one = OneLib.new(profile[:credentials], endpoint, profile[:options] || {})
         end
 
         def self.from_url(driver_url, config)
@@ -93,7 +101,7 @@ class Chef
         # URL _must_ have an endpoint to prevent machine moving, which
         # is not possible today between different endpoints.
         def self.canonicalize_url(driver_url, config)
-          ["opennebula:#{driver_url.split(':', 2)[1]}", config]
+          [driver_url, config]
         end
 
         # Allocate a machine from the underlying service.  This method
@@ -206,6 +214,13 @@ class Chef
           if !instance.nil?
             action_handler.perform_action "destroyed machine #{machine_spec.name} (#{machine_spec.reference['instance_id']})" do
               instance.delete
+              1.upto(10) do
+                instance.info
+                break if instance.state_str == 'DONE'
+                Chef::Log.debug("Waiting for VM '#{instance.id}' to be in 'DONE' state: '#{instance.state_str}'")
+                sleep(2)
+              end
+              fail "Failed to destroy '#{instance.name}'.  Current state: #{instance.state_str}" if instance.state_str != 'DONE'
             end
           else
             Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - nothing to do")
@@ -413,6 +428,18 @@ class Chef
         end
 
         protected
+
+        def one_credentials
+          @one_credentials ||= begin
+                                 credentials = Credentials.new(driver_options[:one_options] || {})
+                                 if driver_options[:credentials]
+                                   credentials.load_plain(driver_options[:credentials], driver_options[:one_options] || {})
+                                 elsif driver_options[:secret_file]
+                                   credentials.load_file(driver_options[:secret_file], driver_options[:one_options] || {})
+                                 end
+                                 credentials
+                               end
+        end
 
         def check_unique_names(bootstrap_options, machine_spec)
           fail "VM with name '#{machine_spec.name}' already exists" unless @one.get_resource('vm', :name => machine_spec.name).nil? if bootstrap_options[:unique_names]

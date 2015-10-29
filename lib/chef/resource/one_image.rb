@@ -26,7 +26,7 @@ class Chef
     # Implementation of Resource class.
     #
     class OneImage < Chef::Resource::LWRPBase
-      self.resource_name = 'one_image'
+      resource_name :one_image
 
       actions :allocate, :create, :destroy, :attach, :snapshot, :upload, :download
       default_action :create

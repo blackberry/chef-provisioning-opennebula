@@ -3,8 +3,9 @@ inherit_from: .rubocop_todo.yml
 AllCops:
   Exclude:
     - 'vendor/**/*'
-    - 'spec/fixtures/**/*'
+    - 'spec/*'
     - 'files/default/ha.rb'
+    - 'chef-provisioning-opennebula.gemspec'
 
 AlignParameters:
   Enabled: false
@@ -36,6 +37,9 @@ ParameterLists:
   CountKeywordArgs: true
 
 StringLiterals:
+  Enabled: false
+
+Style/SignalException:
   Enabled: false
 
 Style/RescueModifier:
