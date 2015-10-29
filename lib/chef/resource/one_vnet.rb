@@ -26,7 +26,7 @@ class Chef
     # Implementation of Resource class.
     #
     class OneVnet < Chef::Resource::LWRPBase
-      self.resource_name = 'one_vnet'
+      resource_name :one_vnet
 
       attribute :name, :kind_of => String, :name_attribute => true
       attribute :vnet_id, :kind_of => Integer

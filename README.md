@@ -12,25 +12,59 @@ Setup
 -----
 In order to use this driver with chef-provisioning the driver URL needs to be specified via environment variable or ```with_driver``` directive.
 
-The driver URL has the following formats:
+Starting in version 0.3.3 the driver URL has the following format:
 
 ```ruby
-opennebula:<endpoint_url>
+opennebula:<endpoint_url>:<profile>
 ```
 
-The driver also requires credentials to connect to OpenNebula endpoint.  These can be specified via ```driver_options```
+Example:
+
+```ruby
+with_driver "opennebula:http://1.2.3.4:443/api:boggi"
+```
+
+Where ```boggi``` profile is stored the profile file.  The file will be searched in the following order:
+1. ```ENV['ONE_CONFIG']```
+2. ```"#{ENV['HOME']}/.one/one_config"```
+3. ```/var/lib/one/.one/one_config```
+
+A sample one_config file would look like this:
+
+```json
+"boggi": {
+  "credentials": "boggi:my_token",
+  "options": {
+    "timeout": 2,
+    "sync": true,
+    "http_proxy": "http://my.proxy.com"
+  }
+},
+"testuser": {
+  "credentials": "testuser:test_token"
+}
+```
+
+If no profile is specified the driver will attempt to read and use the ```ENV['ONE_AUTH']``` file or ```~/.one/one_auth``` or ```/var/lib/one/.one/one_auth```.
+The driver is still backward compatible with previous format and passing ```:secret_file``` or ```:credentials``` in```:driver_options```.
+
+Additional options to OpenNebual client can be passed vi ```:one_options```.
 
 ```ruby
 with_driver "opennebula:http://1.2.3.4/endpoint:port",
-  :credentials => "<username>:<text_password>"
+  :credentials => "<username>:<text_password>",
+  :one_options => { :timeout => 3 }
 ```
 
 or
 
 ```ruby
 with_driver "opennebula:http://1.2.3.4/endpoint:port",
-  :secret_file => "<local_path_to_file_with_credentials>"
+  :secret_file => "<local_path_to_file_with_credentials>",
+  :one_options => { :timeout => 3 }
 ```
+
+If additional OpenNebula client options need to be passed they can be specified as a hash ```:one_options => {}```.  
 
 In context of OpenNebula ```machine``` resource will take the following additional options:
 
@@ -41,7 +75,7 @@ machine_options {
 		:template_file => String location of the VM template file,
 		:template_name => String name of the OpenNebula template to use
 		:template_id => Integer id of the OpenNebula template to use
-		:template_options => Hash values to be overwriten/added in VM template
+		:template_options => Hash values to be merged with VM template
 		:enforce_chef_fqdn => [TrueClass, FalseClass] flag indicating if fqdn names should be used for machine names
 		:is_shutdown => [TrueClass, FalseClass] call vm.shutodwn instead of vm.stop during :stop action
 		:shutdown_hard => [TrueClass, FalseClass] flag indicating hard or soft shutdown
@@ -455,3 +489,44 @@ ENV['ONE_AUTH']       - the path to your one_auth file
 ENV['ONE_HTTPBASE']   - the base URL from which files are downloaded eg. chef-client.deb, init.sh, service.gz etc.
 ENV['CHEF_REPO_PATH'] - the path to your local chef repo
 ```
+
+## <a name="development"></a> Development
+
+* Source hosted at [GitHub][repo]
+* Report issues/questions/feature requests on [GitHub Issues][issues]
+
+Pull requests are very welcome! Make sure your patches are well tested.
+Ideally create a topic branch for every separate change you make. For
+example:
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Added some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create new Pull Request
+
+## <a name="authors"></a> Authors
+
+Created by [Bogdan Buczynski][author] (<bbuczynski@blackberry.com>)
+
+## <a name="maintainers"></a> Maintainers
+
+Maintained by
+  * [Bogdan Buczynski][author] (<bbuczynski@blackberry.com>)
+  * [Philip Oliva][maintainer] (<philoliva8@gmail.com>)
+  * [Andrew J. Brown][maintainer] (<anbrown@blackberry.com>)
+  * [Evgeny Yurchenko][maintainer] (<eyurchenko@blackberry.com>)
+
+## <a name="license"></a> License
+
+Apache 2.0 (see [LICENSE][license])
+
+[author]:           https://github.com/bbuczynski
+[maintainer]:       https://github.com/poliva83
+[maintainer]:       https://github.com/andrewjamesbrown
+[maintainer]:       https://github.com/EYurchenko
+[issues]:           https://github.com/blackberry/chef-provisioning-opennebula/issues
+[license]:          https://github.com/blackberry/chef-provisioning-opennebula/blob/master/LICENSE
+[repo]:             https://github.com/blackberry/chef-provisioning-opennebula
+[driver_usage]:     https://github.com/chef/chef-provisioning/blob/master/docs/building_drivers.md#writing-drivers
+[chefdk_dl]:        https://downloads.chef.io/chef-dk/

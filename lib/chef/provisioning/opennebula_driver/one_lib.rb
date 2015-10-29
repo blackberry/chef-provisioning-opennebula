@@ -41,6 +41,12 @@ class Chef
     #
     module OpenNebulaDriver
       #
+      # ONE error.
+      #
+      class OpenNebulaException < Exception
+      end
+
+      #
       # Implementation.
       #
       class OneLib
@@ -49,7 +55,7 @@ class Chef
         def initialize(credentials, endpoint, options = {})
           @client = OpenNebula::Client.new(credentials, endpoint, options)
           rc = @client.get_version
-          fail rc.message if OpenNebula.is_error?(rc)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
         end
 
         # TODO: add filtering to pool retrieval (type, start, end, user)
@@ -117,10 +123,11 @@ class Chef
 
         def allocate_vm(template)
           vm = OpenNebula::VirtualMachine.new(OpenNebula::VirtualMachine.build_xml, @client)
-          fail "#{vm.message}" if OpenNebula.is_error?(vm)
+          raise OpenNebulaException, vm.message if OpenNebula.is_error?(vm)
+
           Chef::Log.debug(template)
           rc = vm.allocate(template)
-          fail "#{rc.message}" if OpenNebula.is_error?(rc)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
           vm
         end
 
@@ -158,9 +165,9 @@ EOTPL
           Chef::Log.debug("\n#{template}")
 
           image = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
-          fail image.message if OpenNebula.is_error?(image)
+          raise OpenNebulaException, image.message if OpenNebula.is_error?(image)
           rc = image.allocate(template, ds_id)
-          fail rc.message if OpenNebula.is_error?(rc)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
           Chef::Log.debug("Waiting for image '#{name}' (#{image.id}) to be ready")
           wait_for_img(name, image.id)
         end
@@ -178,10 +185,10 @@ DEV_PREFIX = #{prefix}
 EOT
 
           img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
-          fail img.message if OpenNebula.is_error?(img)
+          raise OpenNebulaException, img.message if OpenNebula.is_error?(img)
 
           rc = img.allocate(template, ds_id)
-          fail rc.message if OpenNebula.is_error?(rc)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
 
           Chef::Log.debug("Allocated disk image #{name} (#{img.id})")
           img
@@ -216,18 +223,17 @@ EOT
           disk_id
         end
 
-        def allocate_vnet(vnet_name, cluster_id, template_str)
+        def allocate_vnet(template_str, cluster_id)
           vnet = OpenNebula::Vnet.new(OpenNebula::Vnet.build_xml, @client)
           rc = vnet.allocate(template_str, cluster_id) unless OpenNebula.is_error?(vnet)
-          fail "Failed to allocate vnet #{vnet_name}: #{rc.message}" if OpenNebula.is_error?(rc)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
           vnet
         end
 
-        def allocate_template(template_name, template_str)
+        def allocate_template(template_str)
           tpl = OpenNebula::Template.new(OpenNebula::Template.build_xml, @client)
-          rc = tpl
-          rc = tpl.allocate("#{template_str}") unless OpenNebula.is_error?(rc)
-          fail "Failed to allocate template #{template_name}: #{rc.message}" if OpenNebula.is_error?(rc)
+          rc = tpl.allocate(template_str) unless OpenNebula.is_error?(tpl)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
           rc
         end
 
