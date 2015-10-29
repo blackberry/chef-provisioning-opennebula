@@ -50,8 +50,7 @@ class Chef
         else
           action_handler.perform_action "created vnet '#{@new_resource.name}' from '#{@new_resource.template_file}'" do
             template_str = ::File.read(@new_resource.template_file) + "\nNAME=\"#{@new_resource.name}\""
-            vnet = OpenNebula::Vnet.new(OpenNebula::Vnet.build_xml, @client)
-            vnet = vnet.allocate(template_str, @new_resource.cluster_id) unless OpenNebula.is_error?(vnet)
+            vnet = new_driver.one.allocate_vnet(template_str, @new_resource.cluster_id)
             Chef::Log.debug(template_str)
             fail "failed to create vnet '#{@new_resource.name}': #{vnet.message}" if OpenNebula.is_error?(vnet)
             @new_resource.updated_by_last_action(true)

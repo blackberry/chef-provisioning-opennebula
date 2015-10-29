@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'json'
+
 #
 # Implementation of Provider class.
 #
@@ -28,9 +30,10 @@ class Chef
       # Implementation of Provider class.
       #
       class Credentials
-        def initialize
+        def initialize(options = {})
           @credentials = {}
-          load_default
+          load_default(options)
+          load_profiles
         end
 
         def default
@@ -39,12 +42,62 @@ class Chef
         end
 
         def [](name)
+          fail "Profile '#{name}' does not exist" unless @credentials[name]
           @credentials[name]
         end
 
-        def load_default
+        def load_default(options = {})
           oneauth_file = ENV['ONE_AUTH'] || File.expand_path('~/.one/one_auth')
-          @credentials['default'] = File.read(oneauth_file).strip! if File.file?(oneauth_file)
+          begin
+            creds = File.read(oneauth_file).strip
+            @credentials['default'] = { :credentials => creds, :options => options }
+          end if File.file?(oneauth_file)
+        end
+
+        def load_profiles
+          file = nil
+          if ENV['ONE_CONFIG'] && !ENV['ONE_CONFIG'].empty? && File.file?(ENV['ONE_CONFIG'])
+            file = ENV['ONE_CONFIG']
+          elsif ENV['HOME'] && File.file?("#{ENV['HOME']}/.one/one_config")
+            file = "#{ENV['HOME']}/.one/one_config"
+          elsif File.file?("/var/lib/one/.one/one_config")
+            file = "/var/lib/one/.one/one_config"
+          else
+            Chef::Log.info("No ONE_CONFIG file found, will use default profile")
+          end
+          json = {}
+          begin
+            content_hash = JSON.parse(File.read(file), :symbolize_names => true)
+            content_hash.each { |k, v| json[k.to_s] = v }
+          rescue Exception => e
+            Chef::Log.warn("Failed to read and parse config file #{file}: #{e.message}")
+          end
+          @credentials.merge!(json)
+        end
+
+        def load_plain(creds, options = {})
+          @credentials['default'] = {
+            :credentials => creds,
+            :options => options
+          } unless creds.nil?
+          @credentials
+        end
+
+        def load_file(filename, options = {})
+          creds = File.read(filename).strip if File.file?(filename)
+          @credentials['default'] = {
+            :credentials => creds,
+            :options => options
+          } unless creds.nil?
+          @credentials
+        end
+
+        def self.method_missing(name, *args, &block)
+          singleton.send(name, *args, &block)
+        end
+
+        def self.singleton
+          @one_credentials ||= Credentials.new
         end
       end
     end

@@ -26,7 +26,7 @@ class Chef
     # Implementation of Resource class.
     #
     class OneUser < Chef::Resource::LWRPBase
-      self.resource_name = 'one_user'
+      resource_name :one_user
 
       attribute :name, :kind_of => String, :name_attribute => true
       attribute :user_id, :kind_of => Integer

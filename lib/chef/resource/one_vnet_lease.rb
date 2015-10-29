@@ -26,7 +26,7 @@ class Chef
     # Implementation of Resource class.
     #
     class OneVnetLease < Chef::Resource::LWRPBase
-      self.resource_name = 'one_vnet_lease'
+      resource_name :one_vnet_lease
 
       attribute :mac_ip, :kind_of => String, :name_attribute => true
       attribute :vnet, :kind_of => [String, Integer], :required => true

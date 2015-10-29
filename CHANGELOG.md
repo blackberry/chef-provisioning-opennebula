@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.3 (10/24/2015)
+- Changed driver_url to include profiles.  Without profiles machine_file was unable to recreate the driver
+  and subsequently failed. The new driver_url format is:
+  opennebula:<endpoint_url>:<profile>
+  where profile is stored in ~/.one/one_config or ENV['ONE_CONFIG'] or /var/lig/one/.one/one_config file
+- Added check for machine :destroy to verify that the VM is in DONE state.  If not successful after 20 seconds
+  it will fail.
+- opennebula 4.14 is not backwards compatible so there is a new gem dependency 'opennebula <4.14'.
+- TODO: Support for 4.14
+
 ## 0.3.2 (10/8/2015)
 - Fix rogue property bug
 

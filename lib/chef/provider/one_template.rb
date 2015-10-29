@@ -56,7 +56,7 @@ class Chef
             template_str = File.read(new_resource.template_file) if new_resource.template_file
             template_str = new_driver.one.create_template(new_resource.template) if new_resource.template
             template_str << "\nNAME=\"#{new_resource.name}\""
-            @template = new_driver.one.allocate_template(new_resource.name, template_str)
+            @template = new_driver.one.allocate_template(template_str)
             @new_resource.updated_by_last_action(true)
           end
         end
