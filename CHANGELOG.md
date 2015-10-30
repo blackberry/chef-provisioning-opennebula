@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4 (10/29/2015)
+- Yanked version 0.3.3 from rubygems due to internal homepage link in gemspec
+- Need to release version 0.3.4 to reupload to rubygems.org
+
 ## 0.3.3 (10/24/2015)
 - Changed driver_url to include profiles.  Without profiles machine_file was unable to recreate the driver
   and subsequently failed. The new driver_url format is:
