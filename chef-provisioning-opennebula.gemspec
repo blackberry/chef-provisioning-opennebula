@@ -25,7 +25,7 @@ Gem::Specification.new do |s|
   s.description = s.summary
   s.authors = [ 'Andrew J. Brown', 'Bogdan Buczynski', 'Evgeny Yurchenko', 'Phil Oliva' ]
   s.email = [ 'anbrown@blackberry.com', 'bbuczynski@blackberry.com', 'eyurchenko@blackberry.com', 'poliva@blackberry.com' ]
-  s.homepage = 'https://gitlab.rim.net/chef/chef-provisioning-opennebula'
+  s.homepage = 'https://github.com/blackberry/chef-provisioning-opennebula'
 
   s.add_dependency 'chef'
   s.add_dependency 'chef-provisioning', '> 0.15'
