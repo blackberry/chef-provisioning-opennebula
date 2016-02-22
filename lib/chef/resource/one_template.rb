@@ -28,18 +28,19 @@ class Chef
     class OneTemplate < Chef::Resource::LWRPBase
       resource_name :one_template
 
-      attribute :template, :kind_of => Hash
-      attribute :template_file, :kind_of => String
-      attribute :mode, :regex => [/^\d\d\d$/]
+      attribute :template, :kind_of => Hash, :default => {}
+      attribute :template_file, :kind_of => String, :default => nil
+      attribute :mode, :regex => [/^[0-7]{3}$/], :default => '600'
       attribute :driver
 
-      actions :create, :delete
+      actions :create, :create_if_missing, :delete
       default_action :create
+
+      attr_accessor :exists
+      attr_accessor :equal
 
       def initialize(*args)
         super
-        @chef_environment = run_context.cheffish.current_environment
-        @chef_server = run_context.cheffish.current_chef_server
         @driver = run_context.chef_provisioning.current_driver
       end
     end

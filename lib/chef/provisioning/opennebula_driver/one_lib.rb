@@ -33,11 +33,11 @@ end
 #
 class Chef
   #
-  # Module extention.
+  # Module extension.
   #
   module Provisioning
     #
-    # Module extention.
+    # Module extension.
     #
     module OpenNebulaDriver
       #
@@ -50,7 +50,7 @@ class Chef
       # Implementation.
       #
       class OneLib
-        attr_accessor :client
+        attr_accessor :client, :version_ge_4_14
 
         def initialize(args)
           credentials = args[:credentials]
@@ -68,11 +68,45 @@ class Chef
           @client = OpenNebula::Client.new(credentials, endpoint, options)
           rc = @client.get_version
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
+
+          server_version = rc.split('.').map(&:to_i)
+          gem_version = Gem.loaded_specs["opennebula"].version.to_s.split('.').map(&:to_i)
+          @version_ge_4_14 = gem_version[0] > 4 || (gem_version[0] == 4 && gem_version[1] >= 14)
+
+          version_mismatch_warning(server_version, gem_version) if server_version != gem_version
+        end
+
+        # This function provides a more readable way to return a
+        # OpenNebula::*Pool back to a caller.  The caller simply needs
+        # to pass the pool type in symbol form to us, and we send back
+        # the pool.  The idea is that passing :template will give us
+        # back OpenNebula::TemplatePool, etc. for consistency with
+        # the OpenNebula API calls.  Note that we are still supporting
+        # the old API, while logging a warning that the old format
+        # is deprecated.  Users should expect the old format to disappear
+        # in a future release.
+        def get_pool(type)
+          fail "pool type must be specified" if type.nil?
+          key = type.capitalize
+          key = :SecurityGroup  if key == :Securitygroup
+          key = :VirtualMachine if key == :Virtualmachine
+          key = :VirtualNetwork if key == :Virtualnetwork
+          if key == :Documentpooljson # Doesn't match the template below
+            return OpenNebula::DocumentPoolJSON.new(@client)
+          end
+
+          pool_class = Object.const_get("OpenNebula::#{key}Pool")
+          pool_class.new(@client)
+        rescue NameError
+          _get_pool(type.to_s) # This will raise an exception if invalid.
         end
 
         # TODO: add filtering to pool retrieval (type, start, end, user)
-        def get_pool(type)
-          fail "pool type must be specified" if type.nil?
+        def _get_pool(type)
+          Chef::Log.warn("Use of deprecated pool type '#{type}' detected. " \
+                         "Switch to symbol form; i.e. '[:#{type}]' to use the " \
+                         "'OpenNebula::#{type}Pool'.")
+
           case type
           when 'acl'
             OpenNebula::AclPool.new(@client)
@@ -88,11 +122,11 @@ class Chef
             OpenNebula::GroupPool.new(@client)
           when 'host'
             OpenNebula::HostPool.new(@client)
-          when 'img'
+          when 'image', 'img'
             OpenNebula::ImagePool.new(@client, -1)
           when 'secgroup'
             OpenNebula::SecurityGroupPool.new(@client)
-          when 'tpl'
+          when 'tpl', 'vmtemplate', 'template'
             OpenNebula::TemplatePool.new(@client, -1)
           when 'user'
             OpenNebula::UserPool.new(@client)
@@ -103,30 +137,40 @@ class Chef
           when 'vnet'
             OpenNebula::VirtualNetworkPool.new(@client)
           else
-            fail "Invalid pool type specified."
+            fail "Invalid pool type '#{type}' specified."
           end
         end
+        private :_get_pool
 
+        # TODO: Always return an array
         def get_resource(resource_type, filter = {})
+          fail "resource_type must be specified" if resource_type.nil?
+
+          # Ensure the hash key is correct when searching
+          hash_key = resource_type.to_s.upcase
+          hash_key = 'VMTEMPLATE' if hash_key == 'TPL' || hash_key == 'TEMPLATE'
+
           if filter.empty?
             Chef::Log.warn("get_resource: 'name' or 'id' must be provided")
             return nil
           end
           pool = get_pool(resource_type)
 
-          if resource_type != 'user' && filter[:id] && !filter[:id].nil?
+          if resource_type.to_s != 'user' && filter[:id] && !filter[:id].nil?
             pool.info!(-2, filter[:id].to_i, filter[:id].to_i)
             return pool.first
           end
 
-          if resource_type == 'user'
+          if resource_type.to_s == 'user'
             pool.info
           else
-            pool.info!(-2, -1, -1) if resource_type != 'user'
+            pool.info!(-2, -1, -1)
           end
           resources = []
           pool.each do |res|
-            resources << res if res.name == filter[:name]
+            next unless res.name == filter[:name]
+            next if filter[:uname] && res.to_hash[hash_key]['UNAME'] != filter[:uname]
+            resources << res
           end
           return nil if resources.size == 0
           return resources[0] if resources.size == 1
@@ -145,7 +189,7 @@ class Chef
 
         def wait_for_vm(id, end_state = nil)
           end_state ||= 'RUNNING'
-          vm = get_resource('vm', :id => id)
+          vm = get_resource(:virtualmachine, :id => id)
           fail "Did not find VM with ID: #{id}" unless vm
           while vm.lcm_state_str != end_state.upcase
             vm.info
@@ -156,13 +200,18 @@ class Chef
           vm
         end
 
+        def rename_vm(res, name)
+          rc = res.rename(name)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
+        end
+
         def upload_img(img_config)
           template = <<-EOTPL
 NAME        = #{img_config[:name]}
 PATH        = \"#{img_config[:path]}\"
 DRIVER      = #{img_config[:driver]}
 DESCRIPTION = \"#{img_config[:description]}\"
-EOTPL
+          EOTPL
 
           template << "TYPE        = #{img_config[:type]}\n" unless img_config[:type].nil?
           template << "DEV_PREFIX  = #{img_config[:prefix]}\n" unless img_config[:prefix].nil?
@@ -199,7 +248,7 @@ PERSISTENT = #{img_config[:persistent] ? 'YES' : 'NO'}
 
 DRIVER     = #{img_config[:driver]}
 DEV_PREFIX = #{img_config[:prefix]}
-EOT
+          EOT
 
           img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
           raise OpenNebulaException, img.message if OpenNebula.is_error?(img)
@@ -215,7 +264,7 @@ EOT
           cur_state = nil
           image = nil
           state = 'INIT'
-          pool = get_pool('img')
+          pool = get_pool(:image)
           while state == 'INIT' || state == 'LOCKED'
             pool.info!(-2, img_id, img_id)
             pool.each do |img|
@@ -245,6 +294,13 @@ EOT
           rc = vnet.allocate(template_str, cluster_id) unless OpenNebula.is_error?(vnet)
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
           vnet
+        end
+
+        def update_template(template_id, template_str)
+          template = OpenNebula::Template.new(OpenNebula::Template.build_xml(template_id), @client)
+          rc = template.update(template_str) unless OpenNebula.is_error?(template)
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
+          rc
         end
 
         def allocate_template(template_str)
@@ -287,24 +343,39 @@ EOT
           elsif !options[:template].nil?
             t_hash = template_from_hash(options)
           else
-            fail "To create a VM you must specify one of ':template', ':template_id', ':template_name', or ':template' options in ':bootstrap_options'"
+            fail "To create a VM you must specify one of ':template', " \
+                 "':template_id', or ':template_name' option " \
+                 "in ':bootstrap_options'"
           end
           fail "Inavlid VM template : #{t_hash}" if t_hash.nil? || t_hash.empty?
           tpl_updates = options[:template_options] || {}
           if options[:user_variables]
-            Chef::Log.warn("':user_variables' will be deprecated in next version in favour of ':template_options'") if options.key?(:user_variables)
+            Chef::Log.warn("':user_variables' will be deprecated in next " \
+                           "version in favour of ':template_options'")
             recursive_merge(tpl_updates, options[:user_variables])
           end
           recursive_merge(t_hash, tpl_updates) unless tpl_updates.empty?
-          t_hash['NAME'] = options[:enforce_chef_fqdn] ? name : name.split('.')[0]
+          if options[:enforce_chef_fqdn]
+            Chef::Log.warn(':enforce_chef_fqdn has been deprecated.  VM name ' \
+                           'will be set to the machine resource name.')
+          end
+          # FQDN is the machine resource name, unless overridden by e.g. cloud-init
+          t_hash['NAME'] = name
+          unless t_hash['CONTEXT']['SSH_PUBLIC_KEY']
+            t_hash['CONTEXT']['SSH_PUBLIC_KEY'] = "$USER[SSH_PUBLIC_KEY]"
+          end
+          unless t_hash['CONTEXT']['USER_DATA']
+            t_hash['CONTEXT']['USER_DATA'] = "#cloud-config\n" \
+                                             "manage_etc_hosts: true\n"
+          end
           tpl = create_template(t_hash)
           Chef::Log.debug(tpl)
           tpl
         end
 
         def template_from_one(options)
-          t = get_resource('tpl', :name => options[:template_name]) if options[:template_name]
-          t = get_resource('tpl', :id => options[:template_id]) if options[:template_id]
+          t = get_resource(:template, :name => options[:template_name]) if options[:template_name]
+          t = get_resource(:template, :id => options[:template_id]) if options[:template_id]
           fail "Template '#{options}' does not exist" if t.nil?
           t.to_hash["VMTEMPLATE"]["TEMPLATE"]
         end
@@ -323,7 +394,6 @@ EOT
         end
 
         def template_from_hash(options)
-          Chef::Log.debug("TEMPLATE_JSON: #{options[:template]}")
           options[:template]
         end
 
@@ -331,6 +401,49 @@ EOT
         # This method will create a VM template from parameters provided
         # in the 't' Hash.  The hash must have equivalent structure as the
         # VM template.
+        #
+        # We considered using OpenNebulaHelper::create_template for this,
+        # however it would require a backwards compatibility shim and/or
+        # making breaking changes to the API.  In particular, our method is
+        # more attractive due to the nested nature of our Hash, versus specifying
+        # a long string for the :context attribute with embedded newlines.
+        # Our strategy provides a way to override specific values, while this is
+        # difficult to accomplish with OpenNebulaHelper::create_template.
+        #
+        # Current template hash:
+        # {
+        #   "NAME" => "baz"
+        #   "CPU" => "1",
+        #   "VCPU" => "1",
+        #   "MEMORY" => "512",
+        #   "OS" => {
+        #     "ARCH" => "x86_64"
+        #   },
+        #   "GRAPHICS" => {
+        #     "LISTEN" => "0.0.0.0",
+        #     "TYPE" => "vnc"
+        #   },
+        #   "CONTEXT" => {
+        #     "FOO" => "BAR",
+        #     "BAZ" => "QUX"
+        #     "HOSTNAME" => "$NAME",
+        #     "SSH_PUBLIC_KEY" => "$USER[SSH_PUBLIC_KEY]",
+        #     "NETWORK" => "YES"
+        #   }
+        # }
+        #
+        # Using OpenNebulaHelper::create_template:
+        # {
+        #   :name => 'baz'
+        #   :cpu => 1,
+        #   :vcpu => 1,
+        #   :memory => 512,
+        #   :arch => 'x86_64',
+        #   :vnc => true,
+        #   :context => "FOO=\"BAR\"\nBAZ=\"QUX\"\nHOSTNAME=\"$NAME\"",
+        #   :ssh => true,
+        #   :net_context => true
+        # }
         #
         def create_template(t, level = 0)
           tpl = ""
@@ -357,11 +470,20 @@ EOT
             else
               comma = (index < count) && level > 0
               level.times { tpl << "  " }
-              tpl << "#{k} = \"#{v}\"" << (comma ? ",\n" : "\n")
+              # Escape quotation marks to fix MAND-1394:
+              #    template does not support embedded quotation marks
+              # Escaping of " only happens if " is not already escaped, preceded by \\
+              tpl << "#{k} = \"#{v.gsub(/(?<!\\)\"/, '\"')}\"" << (comma ? ",\n" : "\n")
               index += 1
             end
           end
           tpl
+        end
+
+        def version_mismatch_warning(server, gem)
+          Chef::Log.warn('GEM / SERVER VERSION MISMATCH')
+          Chef::Log.warn("Your gem version is #{gem.join('.')} and the server version is #{server.join('.')}")
+          Chef::Log.warn('Users may experience issues with this gem.')
         end
       end
     end

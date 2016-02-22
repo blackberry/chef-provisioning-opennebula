@@ -36,7 +36,7 @@ class Chef
 
       def exists?(filter)
         new_driver = driver
-        @current_vnet = new_driver.one.get_resource('vnet', filter)
+        @current_vnet = new_driver.one.get_resource(:virtualnetwork, filter)
         Chef::Log.debug("VNET '#{filter}' exists: #{!@current_vnet.nil?}")
         !@current_vnet.nil?
       end

@@ -37,7 +37,7 @@ class Chef
       def exists?
         new_driver = driver
         filter = { @new_resource.vnet.is_a?(Integer) ? :id : :name => @new_resource.vnet }
-        @current_vnet = new_driver.one.get_resource('vnet', filter)
+        @current_vnet = new_driver.one.get_resource(:virtualnetwork, filter)
         fail "vnet '#{@new_resource.vnet}' does not exist" if @current_vnet.nil?
         @current_vnet.info!
         hash = @current_vnet.to_hash

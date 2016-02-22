@@ -55,13 +55,13 @@ machine_options {
 		:template_name => String name of the OpenNebula template to use
 		:template_id => Integer id of the OpenNebula template to use
 		:template_options => Hash values to be merged with VM template
-		:enforce_chef_fqdn => [TrueClass, FalseClass] flag indicating if fqdn names should be used for machine names
 		:is_shutdown => [TrueClass, FalseClass] call vm.shutodwn instead of vm.stop during :stop action
 		:shutdown_hard => [TrueClass, FalseClass] flag indicating hard or soft shutdown
     :mode => String octed to set permissions to the machine
 	},
 	:sudo => true,
 	:ssh_username => 'local',
+	:ssh_gateway => 'gary@myproxy.net',
 	:ssh_options => {
 	  Hash containing SSH options as specified by net-ssh gem
 	  please see https://github.com/net-ssh/net-ssh for all options
@@ -71,9 +71,15 @@ machine_options {
 	  :keys => [ File.open(File.expand_path('~/.ssh/id_rsa_new')).read ]
 	  :keys_only => false,
 	  :forward_agent => true,
+	  :proxy => 'ssh myproxy.net nc %h %p',
 	  :use_agent => true,
 	  :user_known_hosts_file => '/dev/null'
 	}
+  :vm_name => [Symbol, String] Change how the machine shows up in OpenNebula UI and CLI tools.
+			       Use :short to rename the machine to the short hostname.
+			       Use a string to rename the machine to an arbitrary name.
+			       Note this does not change the hostname of the machine, it
+			       simply renames the VM in OpenNebula.
   :connection_timeout => [Integer] max wait time to establish connection
 }
 ```
@@ -503,24 +509,21 @@ example:
 
 ## <a name="authors"></a> Authors
 
-Created by [Bogdan Buczynski][author] (<bbuczynski@blackberry.com>)
+Created by [Bogdan Buczynski](https://github.com/bbuczynski) (<pikus1@gmail.com>)
 
 ## <a name="maintainers"></a> Maintainers
 
 Maintained by
-  * [Bogdan Buczynski][author] (<bbuczynski@blackberry.com>)
-  * [Philip Oliva][maintainer] (<philoliva8@gmail.com>)
-  * [Andrew J. Brown][maintainer] (<anbrown@blackberry.com>)
-  * [Evgeny Yurchenko][maintainer] (<eyurchenko@blackberry.com>)
+  * [Andrew J. Brown](https://github.com/andrewjamesbrown) (<anbrown@blackberry.com>)
+  * [Bogdan Buczynski](https://github.com/bbuczynski) (<pikus1@gmail.com>)
+  * [Dongyu 'Gary' Zheng](https://github.com/dongyuzheng) (<garydzheng@gmail.com>)
+  * [Evgeny Yurchenko](https://github.com/EYurchenko) (<eyurchenko@blackberry.com>)
+  * [Phil Oliva](https://github.com/poliva83) (<philoliva8@gmail.com>)
 
 ## <a name="license"></a> License
 
 Apache 2.0 (see [LICENSE][license])
 
-[author]:           https://github.com/bbuczynski
-[maintainer]:       https://github.com/poliva83
-[maintainer]:       https://github.com/andrewjamesbrown
-[maintainer]:       https://github.com/EYurchenko
 [issues]:           https://github.com/blackberry/chef-provisioning-opennebula/issues
 [license]:          https://github.com/blackberry/chef-provisioning-opennebula/blob/master/LICENSE
 [repo]:             https://github.com/blackberry/chef-provisioning-opennebula

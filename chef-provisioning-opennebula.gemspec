@@ -23,13 +23,13 @@ Gem::Specification.new do |s|
   s.extra_rdoc_files = [ 'README.md', 'LICENSE' ]
   s.summary = 'Driver for creating OpenNebula instances in Chef Provisioning.'
   s.description = s.summary
-  s.authors = [ 'Andrew J. Brown', 'Bogdan Buczynski', 'Evgeny Yurchenko', 'Phil Oliva' ]
-  s.email = [ 'anbrown@blackberry.com', 'bbuczynski@blackberry.com', 'eyurchenko@blackberry.com', 'poliva@blackberry.com' ]
+  s.authors = [ 'Andrew J. Brown', 'Bogdan Buczynski', 'Dongyu \'Gary\' Zheng', 'Evgeny Yurchenko', 'Phil Oliva' ]
+  s.email = [ 'anbrown@blackberry.com', 'bbuczynski@blackberry.com', 'garydzheng@gmail.com', 'eyurchenko@blackberry.com', 'poliva@blackberry.com' ]
   s.homepage = 'https://github.com/blackberry/chef-provisioning-opennebula'
 
   s.add_dependency 'chef'
   s.add_dependency 'chef-provisioning', '> 0.15'
-  s.add_dependency 'opennebula', '~> 4.10', '< 4.14'
+  s.add_dependency 'opennebula', '~> 4.10', '< 5'
 
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'rake'

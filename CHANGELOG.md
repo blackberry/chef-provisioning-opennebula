@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.4.2 (8/12/2015)
+## 0.4.3 (2/12/2016)
+- Fixed get_pool method to process symbols correctly
+- Update driver and resources to use new get_pool method
+- Add 4.14 support
+- Deprecate :enforce_chef_fqdn
+- Added template support for embedded quotation marks
+- Added ssh_gateway support
+- Add :vm_name option to rename VM in OpenNebula UI
+
+## 0.4.1 (8/12/2015)
 - Fixed one_vnet_lease :hold action logic.
 
 ## 0.4.0 (7/12/2015)
