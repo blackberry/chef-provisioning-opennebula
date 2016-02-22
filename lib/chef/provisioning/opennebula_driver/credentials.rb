@@ -69,8 +69,12 @@ class Chef
           begin
             content_hash = JSON.parse(File.read(file), :symbolize_names => true)
             content_hash.each { |k, v| json[k.to_s] = v }
-          rescue Exception => e
-            Chef::Log.warn("Failed to read and parse config file #{file}: #{e.message}")
+          rescue StandardError => e_file
+            Chef::Log.warn("Failed to read config file #{file}: #{e_file.message}")
+          rescue JSON::ParserError => e_json
+            Chef::Log.warn("Failed to parse config file #{file}: #{e_json.message}")
+          rescue
+            Chef::Log.warn("Failed to read or parse config file #{file}: #{$!}")
           end
           @credentials.merge!(json)
         end

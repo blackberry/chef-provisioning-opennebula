@@ -84,14 +84,7 @@ class Chef
         #
         def initialize(driver_url, config)
           super
-          scan = driver_url.match(%r/(opennebula):(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
-          endpoint = scan[2]
-          profile_name = scan[3]
-          fail "OpenNebula endpoint must be specified in 'driver_url': #{driver_url}" if endpoint.nil?
-
-          profile = profile_name ? one_credentials[profile_name] : one_credentials.default
-          Chef::Log.warn("':credentials' and ':secret_file' will be deprecated in next version in favour of 'opennebula:<endpoint>:<profile_name>'") if profile_name.nil?
-          @one = OneLib.new(profile[:credentials], endpoint, profile[:options] || {})
+          @one = OneLib.new(:driver_url => driver_url)
         end
 
         def self.from_url(driver_url, config)
@@ -143,6 +136,7 @@ class Chef
               tpl = @one.get_template(machine_spec.name, machine_options.bootstrap_options)
               vm = @one.allocate_vm(tpl)
               populate_node_object(machine_spec, machine_options, vm)
+              @one.chmod_resource(vm, machine_options.bootstrap_options[:mode])
             end
             Chef::Log.debug(machine_spec.reference)
           else
@@ -241,7 +235,7 @@ class Chef
           instance = instance_for(machine_spec)
           if !instance.nil?
             action_handler.perform_action "powered off machine #{machine_spec.name} (#{machine_spec.reference['instance_id']})" do
-              if machine_spec.reference[:is_shutdown] || machine_options.bootstrap_options[:is_shutdown]
+              if machine_spec.reference[:is_shutdown] || (machine_options.bootstrap_options && machine_options.bootstrap_options[:is_shutdown])
                 hard = machine_spec.reference[:shutdown_hard] || machine_options.bootstrap_options[:shutdown_hard] || false
                 instance.shutdown(hard)
               else
@@ -516,12 +510,12 @@ class Chef
         end
 
         def transport_for(machine_spec, machine_options, _instance)
-          # TODO: Store ssh_options in machine_spec.reference ???
           ssh_options = {
             :keys_only => false,
             :forward_agent => true,
             :use_agent => true,
-            :user_known_hosts_file => '/dev/null'
+            :user_known_hosts_file => '/dev/null',
+            :timeout => 10
           }.merge(machine_options[:ssh_options] || {})
           username = get_ssh_user(machine_spec, machine_options)
           conf = machine_options[:ssh_config] || config
@@ -537,9 +531,9 @@ class Chef
           transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, conf)
 
           # wait up to 5 min to establish SSH connection
-          100.times do
+          val = 300 / ssh_options[:timeout].to_i
+          val.times do
             break if transport.available?
-            sleep 3
             Chef::Log.debug("Waiting for SSH server ...")
           end
           fail "Failed to establish SSH connection to '#{machine_spec.name}'" unless transport.available?

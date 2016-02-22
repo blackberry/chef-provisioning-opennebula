@@ -45,27 +45,6 @@ A sample one_config file would look like this:
 }
 ```
 
-If no profile is specified the driver will attempt to read and use the ```ENV['ONE_AUTH']``` file or ```~/.one/one_auth``` or ```/var/lib/one/.one/one_auth```.
-The driver is still backward compatible with previous format and passing ```:secret_file``` or ```:credentials``` in```:driver_options```.
-
-Additional options to OpenNebual client can be passed vi ```:one_options```.
-
-```ruby
-with_driver "opennebula:http://1.2.3.4/endpoint:port",
-  :credentials => "<username>:<text_password>",
-  :one_options => { :timeout => 3 }
-```
-
-or
-
-```ruby
-with_driver "opennebula:http://1.2.3.4/endpoint:port",
-  :secret_file => "<local_path_to_file_with_credentials>",
-  :one_options => { :timeout => 3 }
-```
-
-If additional OpenNebula client options need to be passed they can be specified as a hash ```:one_options => {}```.  
-
 In context of OpenNebula ```machine``` resource will take the following additional options:
 
 ```ruby
@@ -79,6 +58,7 @@ machine_options {
 		:enforce_chef_fqdn => [TrueClass, FalseClass] flag indicating if fqdn names should be used for machine names
 		:is_shutdown => [TrueClass, FalseClass] call vm.shutodwn instead of vm.stop during :stop action
 		:shutdown_hard => [TrueClass, FalseClass] flag indicating hard or soft shutdown
+    :mode => String octed to set permissions to the machine
 	},
 	:sudo => true,
 	:ssh_username => 'local',
@@ -109,6 +89,7 @@ This resource will allow to create and delete OpenNebula templates.
 ```ruby
   :template => Hash defining OpenNebula template
   :template_file => String location of the VM template file
+  :mode => String octet to set permissions
 ```
 
 ### Actions
@@ -201,6 +182,8 @@ This resource will manage images within OpenNebula.
   :driver => String Image driver eq. 'qcow2'
   :machine_id => [String, Integer] id of the machine (VM) for disk attach
   :disk_id => [String, Integer] id or name of the disk to attach/snapshot
+  :mode => String octet to set permissions
+  :http_port => Integer port number to start local HTTP server at, for :image_file uploads. Default: 8066
 ```
 
 ### Actions
@@ -272,20 +255,31 @@ one_image "snapshot-img" do
 end
 ```
 
-#### 6. Upload a local qcow2 image file to OpenNebula
+#### 6. Upload a local qcow2 image file to OpenNebula, starting HTTP server on port 4567
 
 ```ruby
-one_image "snapshot-img" do
+one_image "upload-img" do
   datastore_id 103
   image_file "/local/path/to/qcow/image/file"
   img_driver "qcow2"
   type "OS"
+  http_port 4567
   description "This is my cool qcow image"
   action :upload
 end
 ```
 
-#### 7. Download a 'boggi-test-img' and store it in /home/local/my-image.qcow2.  Download URL read from ENV[ONE_DOWNLOAD] variable. It will be stored locally in Chef::Config[:file_cache_path]/boggi-test-img.qcow2.
+#### 7. Upload a qcow2 image file residing on a different host to OpenNebula
+
+```ruby
+one_image "upload-img" do
+  datastore_id 103
+  download_url "http://my.image.host/path/to/qcow/image/file"
+  action :upload
+end
+```
+
+#### 8. Download a 'boggi-test-img' and store it in /home/local/my-image.qcow2.  Download URL is read from ENV[ONE_DOWNLOAD] variable. It will be stored locally in Chef::Config[:file_cache_path]/boggi-test-img.qcow2.
 
 ```ruby
 one_image "boggi-test-img" do
@@ -293,7 +287,7 @@ one_image "boggi-test-img" do
 end
 ```
 
-#### 8. Download image ID 12345 and store it in /tmp/image.qcow2.
+#### 9. Download image ID 12345 and store it in /tmp/image.qcow2.
 
 ```ruby
 one_image "boggi-test-img" do
@@ -319,6 +313,7 @@ This resource will allow to create and delete OpenNebula vnets.
   :mac_ip => String ip or mac address
   :template_file => String local file containing the template of a new vnet
   :cluster_id => Integer cluster in which to create a vnet
+  :mode => String octet to set permissions
 ```
 
 ### Actions

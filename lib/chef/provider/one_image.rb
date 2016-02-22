@@ -43,7 +43,7 @@ class Chef
 
       def exists?
         new_driver = driver
-        @image = new_driver.one.get_resource('img', :name => new_resource.name)
+        @image = new_driver.one.get_resource('img', :name => @new_resource.name)
         !@image.nil?
       end
 
@@ -56,14 +56,15 @@ class Chef
 
           action_handler.perform_action "allocated image '#{new_resource.name}'" do
             @image = new_driver.one.allocate_img(
-              new_resource.name,
-              new_resource.size,
-              new_resource.datastore_id,
-              new_resource.type || 'OS',
-              new_resource.fs_type || 'ext2',
-              new_resource.img_driver || 'qcow2',
-              new_resource.prefix || 'vd',
-              new_resource.persistent || false)
+              :name => new_resource.name,
+              :size => new_resource.size,
+              :datastore_id => new_resource.datastore_id,
+              :type => new_resource.type || 'OS',
+              :fs_type => new_resource.fs_type || 'ext2',
+              :driver => new_resource.img_driver || 'qcow2',
+              :prefix => new_resource.prefix || 'vd',
+              :persistent => new_resource.persistent || false)
+            new_driver.one.chmod_resource(@image, new_resource.mode)
             Chef::Log.info("Image '#{new_resource.name}' allocate in initial state #{@image.state_str}")
             @new_resource.updated_by_last_action(true)
           end
@@ -143,6 +144,7 @@ class Chef
           fail "Failed to create snapshot '#{new_resource.name}': #{@image.message}" if OpenNebula.is_error?(@image)
 
           @image = new_driver.one.wait_for_img(new_resource.name, @image)
+          new_driver.one.chmod_resource(image, new_resource.mode)
           if new_resource.persistent
             action_handler.report_progress "make image '#{new_resource.name}' persistent"
             @image.persistent
@@ -153,47 +155,63 @@ class Chef
 
       action :upload do
         fail "'datastore_id' is required" unless new_resource.datastore_id
-        fail "'image_file' is required" unless new_resource.image_file
-        fail "image_file #{new_resource.image_file} does not exist" unless ::File.exist? new_resource.image_file
+        fail "'image_file' or 'download_url' attribute is required" unless new_resource.image_file || new_resource.download_url
 
-        file_url = "http://#{node['ipaddress']}/#{::File.basename(@new_resource.image_file)}"
-        description = @new_resource.description || "#{@new_resource.name} image"
-        image_driver = @new_resource.img_driver || 'qcow2'
+        file_url = nil
+        if new_resource.image_file
+          fail "image_file #{new_resource.image_file} does not exist" unless ::File.exist? new_resource.image_file
+          file_url = "http://#{node['ipaddress']}:#{@new_resource.http_port}/#{::File.basename(@new_resource.image_file)}"
+        else
+          file_url = new_resource.download_url
+        end
+        image_config = {
+          :name => @new_resource.name,
+          :datastore_id => @new_resource.datastore_id.to_s,
+          :path => file_url,
+          :driver => @new_resource.img_driver || 'qcow2',
+          :description => @new_resource.description || "#{@new_resource.name} image",
+          :type => @new_resource.type,
+          :mode => @new_resource.mode,
+          :prefix => @new_resource.prefix,
+          :persistent => @new_resource.persistent,
+          :public => @new_resource.public,
+          :target => @new_resource.target,
+          :disk_type => @new_resource.disk_type,
+          :source => @new_resource.source,
+          :size => @new_resource.size,
+          :fs_type => @new_resource.fs_type
+        }
 
         if exists?
-          if @image.name == @new_resource.name &&
-             @image['PATH'] == file_url &&
-             @image['TEMPLATE/DRIVER'] == image_driver &&
-             @image['TEMPLATE/DESCRIPTION'] == description &&
-             @image['DATASTORE_ID'] == @new_resource.datastore_id.to_s
+          if @image.name == image_config[:name] &&
+             @image['PATH'] == image_config[:path] &&
+             @image['TEMPLATE/DRIVER'] == image_config[:driver] &&
+             @image['TEMPLATE/DESCRIPTION'] == image_config[:description] &&
+             @image['DATASTORE_ID'] == image_config[:datastore_id]
             action_handler.report_progress("image '#{@new_resource.name}' (ID: #{@image.id}) already exists - nothing to do")
           else
             fail "image '#{new_resource.name}' already exists, but it is not the same image"
           end
         else
-          action_handler.perform_action "upload image '#{@new_resource.image_file}'" do
-            begin
-              pid = Process.spawn("sudo python -m SimpleHTTPServer 80", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup => true)
-              fail "Failed to start 'SimpleHTTPServer'" if pid.nil?
-              new_driver.one.upload_img(
-                @new_resource.name,
-                @new_resource.datastore_id,
-                file_url,
-                image_driver,
-                description,
-                @new_resource.type,
-                @new_resource.prefix,
-                @new_resource.persistent,
-                @new_resource.public,
-                @new_resource.target,
-                @new_resource.disk_type,
-                @new_resource.source,
-                @new_resource.size,
-                @new_resource.fs_type)
-
+          action_handler.perform_action "upload image '#{@new_resource.name}'" do
+            if @new_resource.image_file
+              begin
+                success = false
+                pid = nil
+                trap("CLD") do
+                  cpid = Process.wait
+                  fail "Could not start HTTP server on port #{@new_resource.http_port}" if cpid == pid && !success
+                end
+                pid = Process.spawn("python -m SimpleHTTPServer #{@new_resource.http_port}", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup => true)
+                new_driver.one.upload_img(image_config)
+                success = true
+                @new_resource.updated_by_last_action(true)
+              ensure
+                system("sudo kill -9 -#{pid}")
+              end
+            else
+              new_driver.one.upload_img(image_config)
               @new_resource.updated_by_last_action(true)
-            ensure
-              system("sudo kill -9 -#{pid}")
             end
           end
         end
