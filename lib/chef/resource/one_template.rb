@@ -30,6 +30,7 @@ class Chef
 
       attribute :template, :kind_of => Hash
       attribute :template_file, :kind_of => String
+      attribute :mode, :regex => [/^\d\d\d$/]
       attribute :driver
 
       actions :create, :delete

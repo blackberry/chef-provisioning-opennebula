@@ -53,6 +53,7 @@ class Chef
             vnet = new_driver.one.allocate_vnet(template_str, @new_resource.cluster_id)
             Chef::Log.debug(template_str)
             fail "failed to create vnet '#{@new_resource.name}': #{vnet.message}" if OpenNebula.is_error?(vnet)
+            new_driver.one.chmod_resource(vnet, new_resource.mode)
             @new_resource.updated_by_last_action(true)
           end
         end

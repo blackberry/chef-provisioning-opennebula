@@ -30,13 +30,16 @@ ClassLength:
   Max: 1000
 
 AbcSize:
-  Max: 40
+  Max: 62
 
 ParameterLists:
   Max: 15
   CountKeywordArgs: true
 
 StringLiterals:
+  Enabled: false
+
+Style/SpecialGlobalVars:
   Enabled: false
 
 Style/SignalException:

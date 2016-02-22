@@ -52,7 +52,19 @@ class Chef
       class OneLib
         attr_accessor :client
 
-        def initialize(credentials, endpoint, options = {})
+        def initialize(args)
+          credentials = args[:credentials]
+          endpoint = args[:endpoint]
+          options = args[:options] || {}
+          if args[:driver_url]
+            scan = args[:driver_url].match(%r/(opennebula):(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
+            endpoint = scan[2]
+            profile = scan[3]
+            fail "'driver_url' option has invalid format: #{args[:driver_url]}" if endpoint.nil? || profile.nil?
+            one_profile = Chef::Provisioning::OpenNebulaDriver::Credentials.new[profile]
+            credentials = one_profile[:credentials]
+            options = one_profile[:options] || {}
+          end
           @client = OpenNebula::Client.new(credentials, endpoint, options)
           rc = @client.get_version
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
@@ -144,53 +156,58 @@ class Chef
           vm
         end
 
-        def upload_img(name, ds_id, path, driver, description, type, prefix, persistent, pub, target, disk_type, source, size, fstype)
+        def upload_img(img_config)
           template = <<-EOTPL
-NAME        = #{name}
-PATH        = \"#{path}\"
-DRIVER      = #{driver}
-DESCRIPTION = \"#{description}\"
+NAME        = #{img_config[:name]}
+PATH        = \"#{img_config[:path]}\"
+DRIVER      = #{img_config[:driver]}
+DESCRIPTION = \"#{img_config[:description]}\"
 EOTPL
 
-          template << "TYPE        = #{type}\n" unless type.nil?
-          template << "PERSISTENT  = YES\n" if !persistent.nil? && persistent
-          template << "DEV_PREFIX  = #{prefix}\n" unless prefix.nil?
-          template << "PUBLIC      = YES\n" if !pub.nil? && pub
-          template << "TARGET      = #{target}\n" unless target.nil?
-          template << "DISK_TYPE   = #{disk_type}\n" unless disk_type.nil?
-          template << "SOURCE      = #{source}\n" unless source.nil?
-          template << "SIZE        = #{size}" unless size.nil?
-          template << "FSTYPE      = #{fstype}\n" unless fstype.nil?
+          template << "TYPE        = #{img_config[:type]}\n" unless img_config[:type].nil?
+          template << "DEV_PREFIX  = #{img_config[:prefix]}\n" unless img_config[:prefix].nil?
+          template << "TARGET      = #{img_config[:target]}\n" unless img_config[:target].nil?
+          template << "DISK_STYPE  = #{img_config[:disk_type]}\n" unless img_config[:disk_type].nil?
+          template << "SOURCE      = #{img_config[:source]}\n" unless img_config[:source].nil?
+          template << "SIZE        = #{img_config[:size]}\n" unless img_config[:size].nil?
+          template << "FSTYPE      = #{img_config[:fs_type]}\n" unless img_config[:fs_type].nil?
+          template << "PUBLIC      = #{img_config[:public] ? 'YES' : 'NO'}\n" unless img_config[:public].nil?
+          template << "PERSISTENT  = #{img_config[:persistent] ? 'YES' : 'NO'}\n" unless img_config[:persistent].nil?
 
           Chef::Log.debug("\n#{template}")
-
           image = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
           raise OpenNebulaException, image.message if OpenNebula.is_error?(image)
-          rc = image.allocate(template, ds_id)
+          rc = image.allocate(template, img_config[:datastore_id].to_i)
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
-          Chef::Log.debug("Waiting for image '#{name}' (#{image.id}) to be ready")
-          wait_for_img(name, image.id)
+          Chef::Log.debug("Waiting for image '#{img_config[:name]}' (#{image.id}) to be ready")
+          wait_for_img(img_config[:name], image.id)
+          chmod_resource(image, img_config[:mode])
         end
 
-        def allocate_img(name, size, ds_id, type, fstype, driver, prefix, persistent)
-          template = <<-EOT
-NAME       = #{name}
-TYPE       = #{type}
-FSTYPE     = #{fstype}
-SIZE       = #{size}
-PERSISTENT = #{persistent ? 'YES' : 'NO'}
+        def chmod_resource(res = nil, octet = nil)
+          rc = res.chmod_octet(octet) unless res.nil? || octet.nil?
+          raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
+        end
 
-DRIVER     = #{driver}
-DEV_PREFIX = #{prefix}
+        def allocate_img(img_config)
+          template = <<-EOT
+NAME       = #{img_config[:name]}
+TYPE       = #{img_config[:type]}
+FSTYPE     = #{img_config[:fstype]}
+SIZE       = #{img_config[:size]}
+PERSISTENT = #{img_config[:persistent] ? 'YES' : 'NO'}
+
+DRIVER     = #{img_config[:driver]}
+DEV_PREFIX = #{img_config[:prefix]}
 EOT
 
           img = OpenNebula::Image.new(OpenNebula::Image.build_xml, @client)
           raise OpenNebulaException, img.message if OpenNebula.is_error?(img)
 
-          rc = img.allocate(template, ds_id)
+          rc = img.allocate(template, img_config[:datastore_id])
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
 
-          Chef::Log.debug("Allocated disk image #{name} (#{img.id})")
+          Chef::Log.debug("Allocated disk image #{img_config[:name]} (#{img.id})")
           img
         end
 

@@ -36,6 +36,7 @@ class Chef
       attribute :ar_id, :kind_of => Integer
       attribute :template_file, :kind_of => String
       attribute :cluster_id, :kind_of => Integer
+      attribute :mode, :regex => [/^\d\d\d$/]
 
       attribute :driver
 

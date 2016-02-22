@@ -42,6 +42,7 @@ class Chef
       attribute :prefix, :kind_of => String, :equal_to => %w(vd xvd sd hd)
       attribute :persistent, :kind_of => [TrueClass, FalseClass]
       attribute :public, :kind_of => [TrueClass, FalseClass]
+      attribute :mode, :regex => [/^\d\d\d$/]
       attribute :disk_type, :kind_of => String
       attribute :source, :kind_of => String
       attribute :target, :kind_of => String
@@ -49,10 +50,10 @@ class Chef
       attribute :disk_id, :kind_of => [String, Integer]
       attribute :image_file, :kind_of => String
       attribute :cache, :kind_of => String
-      attribute :driver
-
       attribute :download_url, :kind_of => String
       attribute :image_id, :kind_of => Integer
+      attribute :http_port, :kind_of => Integer, :default => 8066
+      attribute :driver
 
       def initialize(*args)
         super
