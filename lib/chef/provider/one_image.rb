@@ -202,7 +202,11 @@ class Chef
                   cpid = Process.wait
                   fail "Could not start HTTP server on port #{@new_resource.http_port}" if cpid == pid && !success
                 end
-                pid = Process.spawn("python -m SimpleHTTPServer #{@new_resource.http_port}", :chdir => ::File.dirname(@new_resource.image_file), STDOUT => "/dev/null", STDERR => "/dev/null", :pgroup => true)
+                pid = Process.spawn("python -m SimpleHTTPServer #{@new_resource.http_port}",
+                  :chdir => ::File.dirname(@new_resource.image_file),
+                  STDOUT => "/dev/null",
+                  STDERR => "/dev/null",
+                  :pgroup => true)
                 new_driver.one.upload_img(image_config)
                 success = true
                 @new_resource.updated_by_last_action(true)
