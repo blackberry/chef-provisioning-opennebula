@@ -49,22 +49,7 @@ class Chef
           ar_pool = get_ar_pool(ar_pool, @new_resource.ar_id.to_s)
           fail "ar_id not found '#{@new_resource.ar_id}'" if ar_pool.nil?
         end
-        available = lease_available?(ar_pool, lookup)
-        fail "'#{name}' is already allocated to a VM (ID: #{vm})" unless available
-        available
-        # ar_pool.each do |a|
-        #   if a['AR']['LEASES']['LEASE']
-        #     [a['AR']['LEASES']['LEASE']].flatten.each do |l|
-        #       if l[lookup] && l[lookup] == @new_resource.name
-        #         exists = true
-        #         vm = l['VM'].to_i
-        #         break
-        #       end
-        #     end
-        #   end
-        # end
-        # fail "'#{name}' is already allocated to a VM (ID: #{vm})" if exists && vm > -1
-        # (exists && vm == -1)
+        lease_available?(ar_pool, lookup)
       end
 
       action :hold do

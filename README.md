@@ -74,6 +74,7 @@ machine_options {
 	  :use_agent => true,
 	  :user_known_hosts_file => '/dev/null'
 	}
+  :connection_timeout => [Integer] max wait time to establish connection
 }
 ```
 

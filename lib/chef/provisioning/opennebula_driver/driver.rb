@@ -517,6 +517,7 @@ class Chef
             :user_known_hosts_file => '/dev/null',
             :timeout => 10
           }.merge(machine_options[:ssh_options] || {})
+          connection_timeout = machine_options[:connection_timeout] || 300
           username = get_ssh_user(machine_spec, machine_options)
           conf = machine_options[:ssh_config] || config
           options = {}
@@ -531,12 +532,14 @@ class Chef
           transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, conf)
 
           # wait up to 5 min to establish SSH connection
-          val = 300 / ssh_options[:timeout].to_i
-          val.times do
+          connect_sleep = 3
+          start = Time.now
+          loop do
             break if transport.available?
-            Chef::Log.debug("Waiting for SSH server ...")
+            fail "Failed to establish SSH connection to '#{machine_spec.name}'" if Time.now > start + connection_timeout.to_i
+            Chef::Log.info("Waiting for SSH server ...")
+            sleep connect_sleep
           end
-          fail "Failed to establish SSH connection to '#{machine_spec.name}'" unless transport.available?
           transport
         end
 

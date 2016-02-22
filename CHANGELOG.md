@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.2 (8/12/2015)
+- Fixed one_vnet_lease :hold action logic.
+
 ## 0.4.0 (7/12/2015)
 - Added http_port to one_image resource so that port other than 8066 (default) can be used to upload images.
 - Fixed error message in one_image resource
