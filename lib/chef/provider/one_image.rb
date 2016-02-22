@@ -43,7 +43,7 @@ class Chef
 
       def exists?
         new_driver = driver
-        @image = new_driver.one.get_resource('img', :name => @new_resource.name)
+        @image = new_driver.one.get_resource(:image, :name => @new_resource.name)
         !@image.nil?
       end
 
@@ -92,7 +92,7 @@ class Chef
           action_handler.perform_action "deleted image '#{new_resource.name}'" do
             rc = @image.delete
             fail "Failed to delete image '#{new_resource.name}' : #{rc.message}" if OpenNebula.is_error?(rc)
-            until new_driver.one.get_resource('img', :name => new_resource.name).nil?
+            until new_driver.one.get_resource(:image, :name => new_resource.name).nil?
               Chef::Log.debug("Waiting for delete image to finish...")
               sleep 1
             end
@@ -107,8 +107,8 @@ class Chef
         fail "Missing attribute 'machine_id'" unless new_resource.machine_id
         fail "Failed to attach disk - image '#{new_resource.name}' does not exist" unless exists?
 
-        vm = new_driver.one.get_resource('vm', new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id)
-        fail "Failed to attach disk - VM '#{new_resource.machine}' does not exist" if vm.nil?
+        vm = new_driver.one.get_resource(:virtualmachine, new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id)
+        fail "Failed to attach disk - VM '#{new_resource.machine_id}' does not exist" if vm.nil?
         action_handler.perform_action "attached disk #{new_resource.name} to #{vm.name}" do
           disk_hash = @image.to_hash
           disk_tpl = "DISK = [ "
@@ -134,13 +134,12 @@ class Chef
       action :snapshot do
         fail "Missing attribute 'machine_id'" unless new_resource.machine_id
         fail "snapshot '#{new_resource.name}' already exists" if exists?
-        vm = new_driver.one.get_resource('vm', new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id)
+        vm = new_driver.one.get_resource(:virtualmachine, new_resource.machine_id.is_a?(Integer) ? :id : :name => new_resource.machine_id)
         fail "Failed to create snapshot - VM '#{new_resource.machine_id}' does not exist" if vm.nil?
         action_handler.perform_action "created snapshot from '#{new_resource.machine_id}'" do
           disk_id = new_resource.disk_id.is_a?(Integer) ? new_resource.disk_id : new_driver.one.get_disk_id(vm, new_resource.disk_id)
           fail "No disk '#{new_resource.disk_id}' found on '#{vm.name}'" if disk_id.nil?
-
-          @image = vm.disk_snapshot(disk_id, new_resource.name, "", true)
+          @image = new_driver.one.version_ge_4_14 ? vm.disk_saveas(disk_id, new_resource.name) : vm.disk_snapshot(disk_id, new_resource.name, "", true)
           fail "Failed to create snapshot '#{new_resource.name}': #{@image.message}" if OpenNebula.is_error?(@image)
 
           @image = new_driver.one.wait_for_img(new_resource.name, @image)
@@ -230,7 +229,7 @@ class Chef
             You can get the value for 'download_url' by loging into your OpenNebula CLI
             and reading the ONE_DOWNLOAD environment variable) if download_url.nil?
           # You can get the value for 'download_url' by loging into your OpenNebula CLI and reading the ONE_DOWNLOAD environment variable" if download_url.nil?
-          image = new_driver.one.get_resource('img', !@new_resource.image_id.nil? ? { :id => @new_resource.image_id } : { :name => @new_resource.name })
+          image = new_driver.one.get_resource(:image, !@new_resource.image_id.nil? ? { :id => @new_resource.image_id } : { :name => @new_resource.name })
           fail "Image 'NAME: #{@new_resource.name}/ID: #{@new_resource.image_id}' does not exist" if image.nil?
           local_path = @new_resource.image_file || ::File.join(Chef::Config[:file_cache_path], "#{@new_resource.name}.qcow2")
           fail "Will not overwrite an existing file: #{local_path}" if ::File.exist?(local_path)

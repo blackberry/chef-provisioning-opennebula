@@ -21,6 +21,7 @@ require 'chef/provisioning/transport/ssh'
 require 'chef/provisioning/opennebula_driver/version'
 require 'chef/provisioning/opennebula_driver/one_lib'
 require 'chef/provisioning/opennebula_driver/credentials'
+require 'net/ssh/proxy/command'
 
 class Chef
   module Provisioning
@@ -120,28 +121,34 @@ class Chef
         #   saved back after allocate_machine completes.
         #
         def allocate_machine(action_handler, machine_spec, machine_options)
-          fqdn = begin
-            machine_options.bootstrap_options[:enforce_chef_fqdn]
-          rescue NoMethodError
-            false
-          end
-          fail "Machine 'name' must be a FQDN" if fqdn && machine_spec.name.scan(/([a-z0-9-]+\.)/i).length == 0
           instance = instance_for(machine_spec)
+          return machine_spec unless instance.nil?
 
-          if instance.nil?
-            fail "'bootstrap_options' must be specified" unless machine_options.bootstrap_options
-            check_unique_names(machine_options.bootstrap_options, machine_spec)
-            action_handler.perform_action "created vm '#{machine_spec.name}'" do
-              Chef::Log.debug(machine_options)
-              tpl = @one.get_template(machine_spec.name, machine_options.bootstrap_options)
-              vm = @one.allocate_vm(tpl)
-              populate_node_object(machine_spec, machine_options, vm)
-              @one.chmod_resource(vm, machine_options.bootstrap_options[:mode])
-            end
-            Chef::Log.debug(machine_spec.reference)
-          else
-            Chef::Log.info("vm '#{machine_spec.name}' already exists - nothing to do")
+          unless machine_options.bootstrap_options
+            fail "'bootstrap_options' must be specified"
           end
+          check_unique_names(machine_options, machine_spec)
+          action_handler.perform_action "created vm '#{machine_spec.name}'" do
+            Chef::Log.debug(machine_options)
+            tpl = @one.get_template(machine_spec.name,
+                                    machine_options.bootstrap_options)
+            vm = @one.allocate_vm(tpl)
+            populate_node_object(machine_spec, machine_options, vm)
+            @one.chmod_resource(vm, machine_options.bootstrap_options[:mode])
+
+            # This option allows to manipulate how the machine shows up
+            # in the OpenNebula UI and CLI tools.  We either set the VM
+            # name to the short hostname of the machine, rename it
+            # to the String passed to us, or leave it alone.
+            if machine_options[:vm_name] == :short
+              @one.rename_vm(vm, machine_spec.name.split('.').first)
+            elsif machine_options[:vm_name].is_a?(String)
+              @one.rename_vm(vm, machine_options[:vm_name])
+              # else use machine_spec.name for name in OpenNebula
+            end
+          end
+          Chef::Log.debug(machine_spec.reference)
+
           machine_spec
         end
 
@@ -172,8 +179,9 @@ class Chef
             deployed = @one.wait_for_vm(instance.id)
             machine_spec.reference['name'] = deployed.name
             machine_spec.reference['state'] = deployed.state_str
-            nic_hash = deployed.to_hash
-            ip = [nic_hash['VM']['TEMPLATE']['NIC']].flatten[0]['IP']
+            if deployed.to_hash['VM']['TEMPLATE']['NIC']
+              ip = [deployed.to_hash['VM']['TEMPLATE']['NIC']].flatten.first['IP']
+            end
             fail "Could not get IP from VM '#{deployed.name}'" if ip.nil? || ip.to_s.empty?
             machine_spec.reference['ip'] = ip
             machine = machine_for(machine_spec, machine_options)
@@ -235,8 +243,8 @@ class Chef
           instance = instance_for(machine_spec)
           if !instance.nil?
             action_handler.perform_action "powered off machine #{machine_spec.name} (#{machine_spec.reference['instance_id']})" do
-              if machine_spec.reference[:is_shutdown] || (machine_options.bootstrap_options && machine_options.bootstrap_options[:is_shutdown])
-                hard = machine_spec.reference[:shutdown_hard] || machine_options.bootstrap_options[:shutdown_hard] || false
+              if machine_spec.reference[:is_shutdown] || (machine_options[:bootstrap_options] && machine_options[:bootstrap_options][:is_shutdown])
+                hard = machine_spec.reference[:shutdown_hard] || machine_options[:bootstrap_options][:shutdown_hard] || false
                 instance.shutdown(hard)
               else
                 instance.stop
@@ -258,19 +266,19 @@ class Chef
         def allocate_image(action_handler, image_spec, image_options, machine_spec)
           if image_spec.reference
             # check if image already exists
-            image = @one.get_resource('img', :id => image_spec.reference['image_id'].to_i)
+            image = @one.get_resource(:image, :id => image_spec.reference['image_id'].to_i)
             action_handler.report_progress "image #{image_spec.name} (ID: #{image_spec.reference['image_id']}) already exists" unless image.nil?
           else
             action_handler.perform_action "create image #{image_spec.name} from machine ID #{machine_spec.reference['instance_id']} with options #{image_options.inspect}" do
-              vm = @one.get_resource('vm', :id => machine_spec.reference['instance_id'])
+              vm = @one.get_resource(:virtualmachine, :id => machine_spec.reference['instance_id'])
               fail "allocate_image: VM does not exist" if vm.nil?
               # set default disk ID
               disk_id = 1
               if image_options.disk_id
                 disk_id = image_options.disk_id.is_a?(Integer) ? image_options.disk_id : @one.get_disk_id(vm, new_resource.disk_id)
               end
+              new_img = @one.version_ge_4_14 ? vm.disk_saveas(disk_id, image_spec.name) : vm.disk_snapshot(disk_id, image_spec.name, "", true)
 
-              new_img = vm.disk_snapshot(disk_id, image_spec.name, "", true)
               fail "Failed to create snapshot '#{new_resource.name}': #{new_img.message}" if OpenNebula.is_error?(new_img)
               populate_img_object(image_spec, new_image)
             end
@@ -286,7 +294,7 @@ class Chef
         # @param [Hash] image_options
         #     A set of options representing the desired state of the machine
         def ready_image(action_handler, image_spec, _image_options)
-          img = @one.get_resource('img', :id => image_spec.reference['image_id'].to_i)
+          img = @one.get_resource(:image, :id => image_spec.reference['image_id'].to_i)
           fail "Image #{image_spec.name} (#{image_spec.reference['image_id']}) does not exist" if img.nil?
           action_handler.perform_action "image #{image_spec.name} is ready" do
             deployed = @one.wait_for_img(img.name, img.id)
@@ -304,7 +312,7 @@ class Chef
         # @param [Hash] image_options
         #     A set of options representing the desired state of the machine
         def destroy_image(action_handler, image_spec, _image_options)
-          img = @one.get_resource('img', :id => image_spec.location['image_id'].to_i)
+          img = @one.get_resource(:image, :id => image_spec.location['image_id'].to_i)
           if img.nil?
             action_handler.report_progress "image #{image_spec.name} (#{image_spec.location['image_id']}) does not exist - nothing to do"
           else
@@ -435,8 +443,18 @@ class Chef
                                end
         end
 
-        def check_unique_names(bootstrap_options, machine_spec)
-          fail "VM with name '#{machine_spec.name}' already exists" unless @one.get_resource('vm', :name => machine_spec.name).nil? if bootstrap_options[:unique_names]
+        def check_unique_names(machine_options, machine_spec)
+          return unless machine_options.bootstrap_options[:unique_names]
+          hostname = if machine_options[:vm_name] == :short
+                       machine_spec.name.split('.').first
+                     elsif machine_options[:vm_name].is_a?(String)
+                       machine_options[:vm_name]
+                     else
+                       machine_spec.name
+                     end
+
+          return if @one.get_resource(:virtualmachine, :name => hostname).nil?
+          fail "VM with name '#{hostname}' already exists"
         end
 
         def populate_node_object(machine_spec, machine_options, vm)
@@ -476,11 +494,11 @@ class Chef
           if machine_spec.reference
             fail "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" \
                 "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
-            instance = @one.get_resource('vm', :id => machine_spec.reference['instance_id'].to_i)
+            instance = @one.get_resource(:virtualmachine, :id => machine_spec.reference['instance_id'].to_i)
           elsif machine_spec.location
             fail "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" \
                 "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
-            instance = @one.get_resource('vm', :id => machine_spec.location['server_id'].to_i)
+            instance = @one.get_resource(:virtualmachine, :id => machine_spec.location['server_id'].to_i)
             unless instance.nil?
               # Convert from previous driver
               machine_spec.reference = {
@@ -500,7 +518,9 @@ class Chef
           instance = instance_for(machine_spec)
           fail "#{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist!" if instance.nil?
           # TODO: Support Windoze VMs (see chef-provisioning-vagrant)
-          Chef::Provisioning::Machine::UnixMachine.new(machine_spec, transport_for(machine_spec, machine_options, instance), convergence_strategy_for(machine_spec, machine_options))
+          Chef::Provisioning::Machine::UnixMachine.new(machine_spec,
+                                                       transport_for(machine_spec, machine_options, instance),
+                                                       convergence_strategy_for(machine_spec, machine_options))
         end
 
         def get_ssh_user(machine_spec, machine_options)
@@ -517,19 +537,20 @@ class Chef
             :user_known_hosts_file => '/dev/null',
             :timeout => 10
           }.merge(machine_options[:ssh_options] || {})
+          ssh_options[:proxy] = Net::SSH::Proxy::Command.new(ssh_options[:proxy]) if ssh_options.key?(:proxy)
+
           connection_timeout = machine_options[:connection_timeout] || 300
           username = get_ssh_user(machine_spec, machine_options)
-          conf = machine_options[:ssh_config] || config
+
           options = {}
           if machine_spec.reference[:sudo] || (!machine_spec.reference.key?(:sudo) && username != 'root')
             options[:prefix] = 'sudo '
           end
+          options[:ssh_pty_enable] = machine_options[:ssh_pty_enable] || true
+          # User provided ssh_gateway takes precedence over machine_spec value
+          options[:ssh_gateway] = machine_options[:ssh_gateway] || machine_spec.reference['ssh_gateway']
 
-          # Enable pty by default
-          options[:ssh_pty_enable] = true
-          options[:ssh_gateway] = machine_spec.reference['ssh_gateway'] if machine_spec.reference.key?('ssh_gateway')
-
-          transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, conf)
+          transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, config)
 
           # wait up to 5 min to establish SSH connection
           connect_sleep = 3

@@ -36,7 +36,7 @@ class Chef
 
       def exists?(filter)
         new_driver = driver
-        @current_user = new_driver.one.get_resource('user', filter)
+        @current_user = new_driver.one.get_resource(:user, filter)
         Chef::Log.debug("user '#{filter}' exists: #{!@current_user.nil?}")
         !@current_user.nil?
       end
