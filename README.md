@@ -3,7 +3,7 @@ chef-provisioning-opennebula
 
 This is the implementation of the OpenNebula driver for chef-provisioning.  It also comes with additional chef resources to manage OpenNebula:
 
-* Template  (one_template)
+* Template (one_template)
 * Image (one_image)
 * VNET (one_vnet)
 * Lease (one_vnet_lease)
@@ -480,17 +480,8 @@ end
 
 ## Rspec Integration tests
 
-Run 'bundle exec rspec ./spec/integration/test_all_integration_spec.rb' in your chef-provisioning-opennebula folder 
-
-Set the following environment variables according to your needs:
-
-```ruby
-ENV['HOME']           - your home directory
-ENV['ONE_XMLRPC']     - this is the OpenNebula endpoint url
-ENV['ONE_AUTH']       - the path to your one_auth file 
-ENV['ONE_HTTPBASE']   - the base URL from which files are downloaded eg. chef-client.deb, init.sh, service.gz etc.
-ENV['CHEF_REPO_PATH'] - the path to your local chef repo
-```
+- Create and configure `spec/config.rb` from `spec/config.sample.rb`, be sure to **read the comments**
+- Run `bundle exec rspec ./spec/integration/test_all_integration_spec.rb` from your chef-provisioning-opennebula folder
 
 ## <a name="development"></a> Development
 
