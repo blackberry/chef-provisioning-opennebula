@@ -3,7 +3,6 @@ inherit_from: .rubocop_todo.yml
 AllCops:
   Exclude:
     - 'vendor/**/*'
-    - 'spec/*'
     - 'files/default/ha.rb'
     - 'chef-provisioning-opennebula.gemspec'
 
@@ -43,6 +42,9 @@ Style/SpecialGlobalVars:
   Enabled: false
 
 Style/SignalException:
+  Enabled: false
+
+Style/FileName:
   Enabled: false
 
 Style/RescueModifier:
