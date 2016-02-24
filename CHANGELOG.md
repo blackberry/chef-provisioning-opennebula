@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4 (2/24/2016)
+- Rewrote RSpec test suite
+- Improved chef-run error detection algorithm
+- RSpec test results are now organized by datetime and the path of the test recipe
+- RSpec now uses `spec/config.rb` rather than environment variables
+- Test values, such as disk images, are no longer hardcoded, but are in `config.rb`
+- Tests for idempotency are now taken into account
+- Expected output for `converge_test_recipe` can now be specified in regex
+- Cleanup recipe has been split into multiple deletion tests
+
 ## 0.4.3 (2/12/2016)
 - Fixed get_pool method to process symbols correctly
 - Update driver and resources to use new get_pool method
