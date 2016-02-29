@@ -1,3 +1,8 @@
 /.buildpath
 /.project
 /pkg/*
+/test-results
+/nodes
+spec/config.rb
+Gemfile.lock
+*~
