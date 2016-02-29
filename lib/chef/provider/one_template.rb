@@ -50,9 +50,11 @@ class Chef
 
         return unless @current_resource.exists
 
-        new_resource_template = @new_resource.template_file.nil? ?
-            @new_resource.template :
-            driver.one.template_from_file(@new_resource.template_file)
+        new_resource_template = if @new_resource.template_file.nil?
+                                  convert_types(@new_resource.template)
+                                else
+                                  driver.one.template_from_file(@new_resource.template_file)
+                                end
 
         @current_id = template.to_hash['VMTEMPLATE']['ID'].to_i
         @current_resource.template(template.to_hash['VMTEMPLATE']['TEMPLATE'])
@@ -148,6 +150,20 @@ class Chef
           fail("Missing attribute 'template_file' or 'template' in " \
                'resource block.')
         end
+      end
+
+      def convert_types(hash)
+        tpl_str = driver.one.create_template(hash)
+        t_hash = nil
+        doc = OpenNebula::CustomObject.new(OpenNebula::CustomObject.build_xml, driver.one.client)
+        unless OpenNebula.is_error?(doc)
+          rc = doc.allocate(tpl_str)
+          fail "Failed to allocate OpenNebula document: #{rc.message}" if OpenNebula.is_error?(rc)
+          doc.info!
+          t_hash = doc.to_hash['DOCUMENT']['TEMPLATE']
+          doc.delete
+        end
+        t_hash
       end
 
       def get_mode(template)

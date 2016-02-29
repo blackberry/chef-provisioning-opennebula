@@ -470,10 +470,17 @@ DEV_PREFIX = #{img_config[:prefix]}
             else
               comma = (index < count) && level > 0
               level.times { tpl << "  " }
-              # Escape quotation marks to fix MAND-1394:
-              #    template does not support embedded quotation marks
-              # Escaping of " only happens if " is not already escaped, preceded by \\
-              tpl << "#{k} = \"#{v.gsub(/(?<!\\)\"/, '\"')}\"" << (comma ? ",\n" : "\n")
+              if v.is_a?(Integer)
+                tpl << "#{k} = \"#{v}\""
+              elsif v.is_a?(String)
+                # Fix for: template does not support embedded quotation marks
+                # Escaping of " only happens if " is not already escaped, preceded by \\
+                tpl << "#{k} = \"#{v.gsub(/(?<!\\)\"/, '\"')}\""
+              else # any other type
+                # convert to string and print it
+                tpl << "#{k} = \"#{v}\""
+              end
+              tpl << (comma ? ",\n" : "\n")
               index += 1
             end
           end

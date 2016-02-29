@@ -13,15 +13,8 @@
 # limitations under the License.
 
 require 'chef/provisioning/opennebula_driver'
-require 'fileutils'
-require "#{File.dirname(__FILE__)}/../config.rb"
 
-FileUtils.mkdir_p(CHEF_REPO_PATH.chomp('/'))
-with_chef_local_server :chef_repo_path => CHEF_REPO_PATH.chomp('/')
-with_driver((ONE_XMLRPC[0, 11] == 'opennebula:' ? ONE_XMLRPC : 'opennebula:' + ONE_XMLRPC).chomp('/'))
-
-with_machine_options MACHINE_OPTIONS.merge(
-  :bootstrap_options => {
-    :template => VM_TEMPLATE
-  }
-)
+one_image 'OpenNebula-bootstrap-img' do
+  machine_id 'OpenNebula-bootstrap-vm'
+  action :attach
+end
