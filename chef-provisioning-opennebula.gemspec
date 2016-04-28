@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ Gem::Specification.new do |s|
   s.add_dependency 'chef'
   s.add_dependency 'chef-provisioning', '> 0.15'
   s.add_dependency 'opennebula', '~> 4.10', '< 5'
+  s.add_dependency 'rest-client', '~> 1.8'
+  s.add_dependency 'json', '~> 1.8', '>= 1.8.3'
 
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'rake'

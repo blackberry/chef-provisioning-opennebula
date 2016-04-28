@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ class Chef
     # Extending module.
     #
     module OpenNebulaDriver
-      VERSION = '0.4.4'
+      VERSION = '0.4.5'
     end
   end
 end

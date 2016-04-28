@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ class Chef
             @new_resource.updated_by_last_action(true)
           end
         else
-          action_handler.report_progress("#{@new_resource.name} is not present - nothing do to")
+          action_handler.report_progress("#{@new_resource.name} is not present - (up to date)")
         end
       end
 
@@ -102,7 +102,7 @@ class Chef
         if current_driver && current_driver.driver_url != new_driver.driver_url
           fail "Cannot move '#{machine_spec.name}' from #{current_driver.driver_url} to #{new_driver.driver_url}: machine moving is not supported.  Destroy and recreate."
         end
-        fail "Driver not specified for one_image #{new_resource.name}" unless new_driver
+        fail "Driver not specified for one_vnet_lease #{new_resource.name}" unless new_driver
         new_driver
       end
 

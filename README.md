@@ -7,6 +7,7 @@ This is the implementation of the OpenNebula driver for chef-provisioning.  It a
 * Image (one_image)
 * VNET (one_vnet)
 * Lease (one_vnet_lease)
+* OneFlow (one_flow_template & one_flow_service)
 
 Setup
 -----
@@ -43,6 +44,14 @@ A sample one_config file would look like this:
 "testuser": {
   "credentials": "testuser:test_token"
 }
+```
+
+To use OneFlow, you also need to specify a ```with_flow_url``` directive. This is the API endpoint of your OneFlow.
+
+Example:
+
+```ruby
+with_flow_url "http://gary.1.2.3.4:9876"
 ```
 
 In context of OpenNebula ```machine``` resource will take the following additional options:
@@ -89,7 +98,7 @@ Resources
 
 ## one_template
 
-This resource will allow to create and delete OpenNebula templates.
+This resource will allow you to create and delete OpenNebula templates.
 
 ### Attributes
 
@@ -332,7 +341,7 @@ This resource will allow to create and delete OpenNebula vnets.
 
 ### Examples
 
-#### 1. Reserver vnet 'boggi_vnet' from parent vnet 12345 with default size 1
+#### 1. Reserve vnet 'boggi_vnet' from parent vnet 12345 with default size 1
 
 ```ruby
 one_vnet "boggi_vnet" do
@@ -341,7 +350,7 @@ one_vnet "boggi_vnet" do
 end
 ```
 
-#### 2. Reserver vnet 'boggi_vnet' from parent vnet 12345 with size 100
+#### 2. Reserve vnet 'boggi_vnet' from parent vnet 12345 with size 100
 
 ```ruby
 one_vnet "boggi_vnet" do
@@ -478,10 +487,270 @@ one_user "boggi" do
 end
 ```
 
+## one_flow_template
+
+This resource will allow you to create, delete, and instantiate OneFlow templates.
+
+### Attributes
+
+```ruby
+:name => String name of the OneFlow template you are targeting, default is what you put between 'one_flow_template' and 'do'
+:template => Hash defining your OneFlow template, or Fixnum ID of a OneFlow template from ONE, or String file location denoted by file://my_template.json or web location denoted by http(s)://1.2.3.4/my_template.json
+:template_options => Hash that override-merges into template
+:mode => String octet to set permissions, default is '600'
+```
+
+### Actions
+
+```ruby
+actions :create, :delete
+default_action :create
+```
+
+### Examples
+
+#### 1. Create OneFlow template from file with mode 640
+
+```ruby
+one_flow_template "garys_flow_template" do
+    template "file:///opt/one/flow_templates/my_template.tpl"
+    mode '640'
+    action :create
+end
+```
+**Note:** If 'name' is not specified in the template file, the template will be named 'garys_flow_template'
+If you want to get it from a url, you can do any of the following:
+```ruby
+template "http://1.2.3.4/my_template.tpl"
+template "gary@https://1.2.3.4/my_template.tpl"
+template "gary:password@https://1.2.3.4/my_template.tpl"
+```
+
+#### 2. Create OneFlow template from hash
+
+```ruby
+one_flow_template "I can write anything I want here" do
+   template  :name => "garys_flow_template",
+             :description => "This is my description.",
+             :shutdown_action => "shutdown-hard",
+             :deployment => "straight",
+             :ready_status_gate => true,
+             :roles => [
+               {
+                 :vm_template => 1398, # OR :vm_template => 'name_of_vm_template',
+                 :scheduled_policies => [
+                   {
+                     :type => "CHANGE",
+                     :adjust => 1,
+                     :start_time => "0 3 1-10 * *"
+                   },
+                   {
+                     :type => "CARDINALITY",
+                     :recurrence => "0 4 1-10 * *",
+                     :adjust => 2
+                   },
+                   {
+                     :type => "PERCENTAGE_CHANGE",
+                     :recurrence => "0 1 1-10 * *",
+                     :adjust => 3,
+                     :min_adjust_step => 14
+                   }
+                 ],
+                 :max_vms => 4,
+                 :cooldown => 15,
+                 :elasticity_policies => [
+                   {
+                     :type => "CHANGE",
+                     :cooldown => 17,
+                     :period => 15,
+                     :adjust => 2,
+                     :period_number => 2,
+                     :expression => "ATT == 20"
+                   },
+                   {
+                     :type => "CARDINALITY",
+                     :cooldown => 14,
+                     :period => 13,
+                     :adjust => 3,
+                     :period_number => 1,
+                     :expression => "ATT > 20"
+                   },
+                   {
+                     :type => "PERCENTAGE_CHANGE",
+                     :cooldown => 13,
+                     :period => 12,
+                     :adjust => 1,
+                     :period_number => 3,
+                     :expression => "ATT < 20",
+                     :min_adjust_step => 13
+                   }
+                 ],
+                 :cardinality => 3,
+                 :shutdown_action => "shutdown",
+                 :name => "gary_role_1",
+                 :vm_template_contents => "NIC=[NETWORK_ID=\"$NetConfg1\"]\nNIC=[NETWORK_ID=\"$NetConfg2\"]\n",
+                 :min_vms => 2
+               }
+             ],
+             :custom_attrs => {
+               :NetConfg2 => "M|vnet_id|another description",
+               :NetConfg1 => "M|vnet_id|description for net confg 1"
+             }
+    action :create
+end
+```
+**Note:** This is a template with (nearly) all fields filled out. By no means should you use this template, all the values were entered randomly.
+Notice that I specified 'name' in my hash. As for vm_template, you can either put the name of a VM template or put its ID. Using ID will be faster.
+See here for more info: http://docs.opennebula.org/4.14/integration/system_interfaces/appflow_api.html#examples
+
+#### 3. Update OneFlow template from hash (overwrite-merge)
+
+```ruby
+one_flow_template "garys_flow_template" do
+  template :deployment => nil, # setting any value to nil will reset it back to default
+           :roles => [
+             {
+               :name => 'delete_this_role',
+               :delete_role => nil # specifying this will delete this role
+             },
+             {
+               :name => 'new_role', # assuming new_role does not exist, creates a new role
+               :vm_template => 'gary-ubuntu-14.04',
+               :cooldown => 8
+             },
+             {
+               :name => 'existing_role', # assuming existing_role exists, updates cooldown to 88 seconds
+               :vm_template => 'gary-ubuntu-14.04',
+               :cooldown => 88
+             }
+           ]
+  action :update
+end
+```
+
+#### 4. Delete a OneFlow template
+
+```ruby
+one_flow_template "garys_flow_template" do
+   action :delete
+end
+```
+
+#### 5. Change the permissions of a OneFlow template
+
+```ruby
+one_flow_template "garys_flow_template" do
+   mode '640'
+   action :create
+end
+```
+
+## one_flow_service
+
+This resource will allow you to create, delete, and instantiate OneFlow templates.
+
+### Attributes
+
+```ruby
+:name => String name of the OneFlow service you are targeting, default is what you put between 'one_flow_service' and 'do'
+:template => String name or Fixnum ID of the template you want to instantiate
+:template_options => Hash that override-merges into template
+:mode => String octet to set permissions, default is '600'
+:role => String name of the role of a service you are targeting
+:period => Integer seconds between each group of actions
+:number => Integer number of VMs to apply the action to each period
+:cardinality => Integer number of VMs to deploy
+:force_scale => Boolean that allows scaling to cardinality above or below templated range
+:override_failsafe => Boolean that allows the user to ignore aborts due to untested / partionally implemented code and execute the action anyways, default false
+```
+**More on override_failsafe:** This only affects the actions :hold, :release, and :boot. The reason for this is because I was unable to figure out how to get the my VMs in a state that allows the running of these actions. As such, I was unable to test these actions.
+Here is the warning you will receive:
+```ruby
+Chef::Log.warn('You have chose to use an action that is untested / partially implemented.')
+Chef::Log.warn('Specifically, the driver will send the appropriate POST request to the Flow API')
+Chef::Log.warn('But the driver will not verify that the action ran successfully, or ran at all.')
+Chef::Log.warn('Moreover, the driver will not wait for the action complete, as in, the action will')
+Chef::Log.warn('run asynchronously, meaning dependent actions after this one may fail.')
+Chef::Log.warn('Use at your own risk. Please report any issues.')
+```
+
+### Actions
+
+```ruby
+actions :instantiate, :recover, :delete, :shutdown, 
+        :scale, :shutdown_hard, :undeploy, :undeploy_hard, 
+        :hold, :release, :stop, :suspend, :resume, :boot, 
+        :delete_recreate, :reboot, :reboot_hard, :poweroff, 
+        :poweroff_hard, :snapshot_create
+default_action :instantiate
+```
+
+### Examples
+
+#### 1. Instantiate a service from template
+
+```ruby
+one_flow_service "gary_service" do
+    template garys_flow_template # or ID, eg. template 555
+    template_options :roles => [
+                       {
+                         :name => 'random_role',
+                         :vm_template => 'gary-ubuntu-14.04',
+                         :cooldown => 10
+                       }
+                     ]
+    mode '640'
+    action :instantiate
+end
+```
+
+#### 2. Recover a service (or delete / shutdown)
+
+```ruby
+one_flow_service "gary_service" do
+    action :recover # or :delete / :shutdown
+end
+```
+
+#### 3. Change permissions of a service
+
+```ruby
+one_flow_service "I can write anything I want here" do
+    name "gary_service"
+    mode "640"
+    action :instantiate
+end
+```
+
+#### 4. Scale a role of a service to have 3 VMs regardless of the min/max VM setting
+
+```ruby
+one_flow_service "gary_service" do
+    cardinality 3
+    force_scale true # optional, default = false
+    role "gary_role"
+    action :scale
+end
+```
+
+#### 5. Perform a hard poweroff of a role
+
+```ruby
+one_flow_service "gary_service" do
+    role "gary_role"
+    period 3 # optional
+    number 5 # optional
+    action :poweroff_hard
+end
+```
+**Note:** All actions listed above except for :recover can be performed in the same manner.
+
 ## Rspec Integration tests
 
 - Create and configure `spec/config.rb` from `spec/config_sample.rb`, be sure to **read the comments**
-- Run `bundle exec rspec ./spec/integration/test_all_integration_spec.rb` from your chef-provisioning-opennebula folder
+- From your chef-provisioning-opennebula folder, run:
+    - `bundle install`
+    - `rspec ./spec/integration/test_all_integration_spec.rb`
 
 ## <a name="development"></a> Development
 

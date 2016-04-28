@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,13 +19,91 @@ require 'chef/provisioning/convergence_strategy/install_sh'
 require 'chef/provisioning/convergence_strategy/no_converge'
 require 'chef/provisioning/transport/ssh'
 require 'chef/provisioning/opennebula_driver/version'
-require 'chef/provisioning/opennebula_driver/one_lib'
 require 'chef/provisioning/opennebula_driver/credentials'
 require 'net/ssh/proxy/command'
+require 'json'
+require 'open3'
+
+class Chef
+  module DSL
+    #
+    # Module extension.
+    #
+    module Recipe
+      def with_flow_url(url)
+        run_context.chef_provisioning.with_flow_url(url)
+      end
+    end
+  end
+end
+
+class Chef
+  module Provisioning
+    #
+    # Class extension.
+    #
+    class ChefRunData
+      attr_accessor :flow_url
+      def with_flow_url(url)
+        @flow_url = url
+      end
+    end
+  end
+end
 
 class Chef
   module Provisioning
     module OpenNebulaDriver
+      def self.match_driver_url(url, allow_nil_profile = false)
+        scan = url.match(%r/opennebula:(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
+        fail "'driver_url' option has invalid format: #{url}" if scan.nil?
+        endpoint = scan[1]
+        profile = scan[2]
+        fail "'driver_url' option is missing an endpoint: #{url}" if endpoint.nil?
+        fail "'driver_url' option is missing a profile: #{url}" if profile.nil? && !allow_nil_profile
+        [endpoint, profile]
+      end
+
+      def self.get_onelib(args)
+        endpoint = args[:endpoint]
+        credentials = args[:credentials]
+        options = args[:options] || {}
+        if args[:driver_url]
+          fail "OpenNebula driver_url cannot be #{args[:driver_url].class}, it must be a String" unless args[:driver_url].is_a?(String)
+          endpoint, profile = Chef::Provisioning::OpenNebulaDriver.match_driver_url(args[:driver_url])
+          one_profile = Chef::Provisioning::OpenNebulaDriver::Credentials.new[profile]
+          credentials = one_profile[:credentials]
+          options = one_profile[:options] || {}
+        end
+        fail "OpenNebula credentials cannot be #{credentials.class}, it must be a String" unless credentials.is_a?(String)
+        fail "OpenNebula endpoint cannot be #{endpoint.class}, it must be a String" unless endpoint.is_a?(String)
+        fail "OpenNebula options cannot be #{options.class}, it must be a Hash" unless options.is_a?(Hash)
+        server_version, _ = Open3.capture2e("ruby #{File.dirname(__FILE__)}/../driver_init/server_version.rb #{endpoint} #{credentials} #{options.to_json.inspect}")
+        server_version.strip!
+        fail server_version unless server_version =~ /^\d+\.\d+(?:\.\d+)?$/
+        begin
+          gem 'opennebula', "~> #{server_version}"
+          require 'opennebula'
+        rescue Gem::LoadError => e
+          e_inspect = e.inspect
+          if e_inspect.include?('already activated')
+            Chef::Log.warn(e_inspect)
+          else
+            raise e
+          end
+        end
+        require 'chef/provisioning/opennebula_driver/one_lib'
+        gem_version = Gem.loaded_specs['opennebula'].version.to_s
+        if gem_version == server_version
+          Chef::Log.debug("You are using OpenNebula gem version #{gem_version} against OpenNebula server version #{server_version}")
+        else
+          Chef::Log.warn('OPENNEBULA GEM / SERVER VERSION MISMATCH')
+          Chef::Log.warn("You are using OpenNebula gem version #{gem_version} against OpenNebula server version #{server_version}")
+          Chef::Log.warn('Users may experience issues with this gem.')
+        end
+        OneLib.new(:credentials => credentials, :endpoint => endpoint, :options => options)
+      end
+
       #
       # A Driver instance represents a place where machines can be created
       # and found, and contains methods to create, delete, start, stop, and
@@ -81,11 +159,14 @@ class Chef
         #
         # driver_options:
         #   credentials: bbsl-auto:text_pass  credentials has precedence over secret_file
-        #   secret_file: local_path_to_one_auth_file
+        #   endpoint: opennebula endpoint
+        #   options: additional options for OpenNebula::Client
         #
         def initialize(driver_url, config)
           super
-          @one = OneLib.new(:driver_url => driver_url)
+          @one = Chef::Provisioning::OpenNebulaDriver.get_onelib(:driver_url => driver_url)
+          @driver_url_with_profile = driver_url
+          @driver_url = @one.client.one_endpoint
         end
 
         def self.from_url(driver_url, config)
@@ -124,17 +205,17 @@ class Chef
           instance = instance_for(machine_spec)
           return machine_spec unless instance.nil?
 
-          unless machine_options.bootstrap_options
+          unless machine_options[:bootstrap_options]
             fail "'bootstrap_options' must be specified"
           end
           check_unique_names(machine_options, machine_spec)
           action_handler.perform_action "created vm '#{machine_spec.name}'" do
             Chef::Log.debug(machine_options)
             tpl = @one.get_template(machine_spec.name,
-                                    machine_options.bootstrap_options)
+                                    machine_options[:bootstrap_options])
             vm = @one.allocate_vm(tpl)
             populate_node_object(machine_spec, machine_options, vm)
-            @one.chmod_resource(vm, machine_options.bootstrap_options[:mode])
+            @one.chmod_resource(vm, machine_options[:bootstrap_options][:mode])
 
             # This option allows to manipulate how the machine shows up
             # in the OpenNebula UI and CLI tools.  We either set the VM
@@ -225,7 +306,11 @@ class Chef
               fail "Failed to destroy '#{instance.name}'.  Current state: #{instance.state_str}" if instance.state_str != 'DONE'
             end
           else
-            Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - nothing to do")
+            if machine_spec.reference
+              Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - (up to date)")
+            else
+              Chef::Log.info("vm #{machine_spec.name} does not exist - (up to date)")
+            end
           end
           strategy = convergence_strategy_for(machine_spec, machine_options)
           strategy.cleanup_convergence(action_handler, machine_spec)
@@ -251,7 +336,7 @@ class Chef
               end
             end
           else
-            Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - nothing to do")
+            Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - (up to date)")
           end
         end
 
@@ -314,7 +399,7 @@ class Chef
         def destroy_image(action_handler, image_spec, _image_options)
           img = @one.get_resource(:image, :id => image_spec.location['image_id'].to_i)
           if img.nil?
-            action_handler.report_progress "image #{image_spec.name} (#{image_spec.location['image_id']}) does not exist - nothing to do"
+            action_handler.report_progress "image #{image_spec.name} (#{image_spec.location['image_id']}) does not exist - (up to date)"
           else
             action_handler.perform_action "deleted image #{image_spec.name} (#{image_spec.location['image_id']})" do
               rc = img.delete
@@ -413,6 +498,7 @@ class Chef
         # @param [Array[ChefMetal::MachineSpec]] machine_specs
         #        An array of machine specs the load balancer should have
         def allocate_load_balancer(_action_handler, _lb_spec, _lb_options, _machine_specs)
+          fail "'allocate_load_balancer' is not implemented"
         end
 
         # Make the load balancer ready
@@ -420,6 +506,7 @@ class Chef
         # @param [ChefMetal::LoadBalancerSpec] lb_spec Frozen LB specification
         # @param [Hash] lb_options A hash of options to pass the LB
         def ready_load_balancer(_action_handler, _lb_spec, _lb_options, _machine_specs)
+          fail "'ready_load_balancer' is not implemented"
         end
 
         # Destroy the load balancer
@@ -427,6 +514,7 @@ class Chef
         # @param [ChefMetal::LoadBalancerSpec] lb_spec Frozen LB specification
         # @param [Hash] lb_options A hash of options to pass the LB
         def destroy_load_balancer(_action_handler, _lb_spec, _lb_options)
+          fail "'destroy_load_balancer' is not implemented"
         end
 
         protected
@@ -444,7 +532,7 @@ class Chef
         end
 
         def check_unique_names(machine_options, machine_spec)
-          return unless machine_options.bootstrap_options[:unique_names]
+          return unless machine_options[:bootstrap_options][:unique_names]
           hostname = if machine_options[:vm_name] == :short
                        machine_spec.name.split('.').first
                      elsif machine_options[:vm_name].is_a?(String)
@@ -458,13 +546,13 @@ class Chef
         end
 
         def populate_node_object(machine_spec, machine_options, vm)
-          machine_spec.driver_url = driver_url
+          machine_spec.driver_url = @driver_url_with_profile
           machine_spec.reference = {
             'driver_version' => Chef::Provisioning::OpenNebulaDriver::VERSION,
             'allocated_at' => Time.now.utc.to_s,
-            'image_id' => machine_options.bootstrap_options[:image_id] || nil,
-            'is_shutdown' => machine_options.bootstrap_options[:is_shutdown] || false,
-            'shutdown_hard' => machine_options.bootstrap_options[:shutdown_hard] || false,
+            'image_id' => machine_options[:bootstrap_options][:image_id] || nil,
+            'is_shutdown' => machine_options[:bootstrap_options][:is_shutdown] || false,
+            'shutdown_hard' => machine_options[:bootstrap_options][:shutdown_hard] || false,
             'instance_id' => vm.id,
             'name' => vm.name,
             'state' => vm.state_str
@@ -478,7 +566,7 @@ class Chef
         end
 
         def populate_img_object(image_spec, new_image)
-          image_spec.driver_url = driver_url
+          image_spec.driver_url = @driver_url_with_profile
           image_spec.reference = {
             'driver_version' => Chef::Provisioning::OpenNebulaDriver::VERSION,
             'image_id'       => new_image,
@@ -492,13 +580,15 @@ class Chef
         def instance_for(machine_spec)
           instance = nil
           if machine_spec.reference
-            fail "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" \
-                "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
+            current_endpoint, _ = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
+            fail "Cannot move '#{machine_spec.name}' from #{current_endpoint} to #{driver_url}: machine moving is not supported.  Destroy and recreate." if current_endpoint != driver_url
             instance = @one.get_resource(:virtualmachine, :id => machine_spec.reference['instance_id'].to_i)
+            machine_spec.driver_url = @driver_url_with_profile
           elsif machine_spec.location
-            fail "Switching a machine's driver from #{machine_spec.driver_url} to #{driver_url} is not supported!" \
-                "  Use machine :destroy and then :create the machine on the new driver." if machine_spec.driver_url != driver_url
+            current_endpoint, _ = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
+            fail "Cannot move '#{machine_spec.name}' from #{current_endpoint} to #{driver_url}: machine moving is not supported.  Destroy and recreate." if current_endpoint != driver_url
             instance = @one.get_resource(:virtualmachine, :id => machine_spec.location['server_id'].to_i)
+            machine_spec.driver_url = @driver_url_with_profile
             unless instance.nil?
               # Convert from previous driver
               machine_spec.reference = {
@@ -518,9 +608,11 @@ class Chef
           instance = instance_for(machine_spec)
           fail "#{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist!" if instance.nil?
           # TODO: Support Windoze VMs (see chef-provisioning-vagrant)
-          Chef::Provisioning::Machine::UnixMachine.new(machine_spec,
-                                                       transport_for(machine_spec, machine_options, instance),
-                                                       convergence_strategy_for(machine_spec, machine_options))
+          Chef::Provisioning::Machine::UnixMachine.new(
+            machine_spec,
+            transport_for(machine_spec, machine_options, instance),
+            convergence_strategy_for(machine_spec, machine_options)
+          )
         end
 
         def get_ssh_user(machine_spec, machine_options)
@@ -566,7 +658,7 @@ class Chef
 
         def convergence_strategy_for(machine_spec, machine_options)
           # TODO: Support Windoze VMs (see chef-provisioning-vagrant)
-          convergence_options = Cheffish::MergedConfig.new(machine_options[:convergence_options] || {})
+          convergence_options = Cheffish::MergedConfig.new(machine_options ? machine_options[:convergence_options] || {} : {})
 
           if !machine_spec.reference
             Chef::Provisioning::ConvergenceStrategy::NoConverge.new(convergence_options, config)

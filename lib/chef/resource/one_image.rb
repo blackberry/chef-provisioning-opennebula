@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ class Chef
       attribute :prefix, :kind_of => String, :equal_to => %w(vd xvd sd hd)
       attribute :persistent, :kind_of => [TrueClass, FalseClass]
       attribute :public, :kind_of => [TrueClass, FalseClass]
-      attribute :mode, :regex => [/^\d\d\d$/]
+      attribute :mode, :regex => [/^[0-7]{3}$/]
       attribute :disk_type, :kind_of => String
       attribute :source, :kind_of => String
       attribute :target, :kind_of => String
