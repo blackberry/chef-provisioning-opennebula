@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-require 'opennebula'
-
-require 'opennebula/document'
 
 #
 # Sample Document definition.
@@ -50,30 +46,14 @@ class Chef
       # Implementation.
       #
       class OneLib
-        attr_accessor :client, :version_ge_4_14
+        attr_reader :client, :version_ge_4_14
 
         def initialize(args)
-          credentials = args[:credentials]
-          endpoint = args[:endpoint]
-          options = args[:options] || {}
-          if args[:driver_url]
-            scan = args[:driver_url].match(%r/(opennebula):(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
-            endpoint = scan[2]
-            profile = scan[3]
-            fail "'driver_url' option has invalid format: #{args[:driver_url]}" if endpoint.nil? || profile.nil?
-            one_profile = Chef::Provisioning::OpenNebulaDriver::Credentials.new[profile]
-            credentials = one_profile[:credentials]
-            options = one_profile[:options] || {}
-          end
-          @client = OpenNebula::Client.new(credentials, endpoint, options)
+          @client = OpenNebula::Client.new(args[:credentials], args[:endpoint], args[:options])
           rc = @client.get_version
           raise OpenNebulaException, rc.message if OpenNebula.is_error?(rc)
-
-          server_version = rc.split('.').map(&:to_i)
-          gem_version = Gem.loaded_specs["opennebula"].version.to_s.split('.').map(&:to_i)
+          gem_version = Gem.loaded_specs['opennebula'].version.to_s.split('.').map(&:to_i)
           @version_ge_4_14 = gem_version[0] > 4 || (gem_version[0] == 4 && gem_version[1] >= 14)
-
-          version_mismatch_warning(server_version, gem_version) if server_version != gem_version
         end
 
         # This function provides a more readable way to return a
@@ -399,7 +379,7 @@ DEV_PREFIX = #{img_config[:prefix]}
 
         #
         # This method will create a VM template from parameters provided
-        # in the 't' Hash.  The hash must have equivalent structure as the
+        # in the 't' Hash. The hash must have equivalent structure as the
         # VM template.
         #
         # We considered using OpenNebulaHelper::create_template for this,
@@ -485,12 +465,6 @@ DEV_PREFIX = #{img_config[:prefix]}
             end
           end
           tpl
-        end
-
-        def version_mismatch_warning(server, gem)
-          Chef::Log.warn('GEM / SERVER VERSION MISMATCH')
-          Chef::Log.warn("Your gem version is #{gem.join('.')} and the server version is #{server.join('.')}")
-          Chef::Log.warn('Users may experience issues with this gem.')
         end
       end
     end

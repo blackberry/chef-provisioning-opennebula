@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ class Chef
       attribute :ar_id, :kind_of => Integer
       attribute :template_file, :kind_of => String
       attribute :cluster_id, :kind_of => Integer
-      attribute :mode, :regex => [/^\d\d\d$/]
+      attribute :mode, :regex => [/^[0-7]{3}$/]
 
       attribute :driver
 

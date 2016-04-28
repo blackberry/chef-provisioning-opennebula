@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class Chef
 
       action :allocate do
         if exists?
-          action_handler.report_progress "image '#{new_resource.name}' already exists - nothing to do"
+          action_handler.report_progress "image '#{new_resource.name}' already exists - (up to date)"
         else
           fail "'size' must be specified" unless new_resource.size
           fail "'datastore_id' must be specified" unless new_resource.datastore_id
@@ -81,7 +81,7 @@ class Chef
             @new_resource.updated_by_last_action(true)
           end
         when 'READY', 'USED', 'USED_PERS'
-          action_handler.report_progress "image '#{new_resource.name}' is already in #{@image.state_str} state - nothing to do"
+          action_handler.report_progress "image '#{new_resource.name}' is already in #{@image.state_str} state - (up to date)"
         else
           fail "Image #{new_resource.name} is in unexpected state '#{@image.state_str}'"
         end
@@ -99,7 +99,7 @@ class Chef
             @new_resource.updated_by_last_action(true)
           end
         else
-          action_handler.report_progress "image '#{new_resource.name}' does not exist - nothing to do"
+          action_handler.report_progress "image '#{new_resource.name}' does not exist - (up to date)"
         end
       end
 
@@ -120,7 +120,7 @@ class Chef
 
           disk_id = new_driver.one.get_disk_id(vm, disk_hash['IMAGE']['NAME'])
           if !disk_id.nil?
-            action_handler.report_progress "disk is already attached" unless disk_id.nil?
+            action_handler.report_progress "disk is already attached - (up to date)" unless disk_id.nil?
           elsif disk_id.nil?
             action_handler.report_progress "disk not attached, attaching..."
             rc = vm.disk_attach(disk_tpl)
@@ -187,7 +187,7 @@ class Chef
              @image['TEMPLATE/DRIVER'] == image_config[:driver] &&
              @image['TEMPLATE/DESCRIPTION'] == image_config[:description] &&
              @image['DATASTORE_ID'] == image_config[:datastore_id]
-            action_handler.report_progress("image '#{@new_resource.name}' (ID: #{@image.id}) already exists - nothing to do")
+            action_handler.report_progress("image '#{@new_resource.name}' (ID: #{@image.id}) already exists - (up to date)")
           else
             fail "image '#{new_resource.name}' already exists, but it is not the same image"
           end

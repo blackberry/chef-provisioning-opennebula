@@ -1,4 +1,4 @@
-# Copyright 2015, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ class Chef
         fail "Missing attribute 'cluster_id'" unless @new_resource.cluster_id
 
         if exists?(:name => @new_resource.name)
-          action_handler.report_progress "vnet '#{@new_resource.name}' already exists - nothing to do"
+          action_handler.report_progress "vnet '#{@new_resource.name}' already exists - (up to date)"
         else
           action_handler.perform_action "created vnet '#{@new_resource.name}' from '#{@new_resource.template_file}'" do
             template_str = ::File.read(@new_resource.template_file) + "\nNAME=\"#{@new_resource.name}\""
@@ -67,7 +67,7 @@ class Chef
             @new_resource.updated_by_last_action(true)
           end
         else
-          action_handler.report_progress "vnet '#{new_resource.name}' does not exists - nothing to do"
+          action_handler.report_progress "vnet '#{new_resource.name}' does not exists - (up to date)"
         end
       end
 
@@ -87,7 +87,7 @@ class Chef
             same = ar_pool[0]['AR']['SIZE'].to_i == @new_resource.size
           end
           if same
-            action_handler.report_progress "vnet '#{@new_resource.name}' already exists - nothing to do"
+            action_handler.report_progress "vnet '#{@new_resource.name}' already exists - (up to date)"
           else
             fail "vnet '#{@new_resource.name}' exists with different configuration"
           end
@@ -107,7 +107,7 @@ class Chef
         if current_driver && current_driver.driver_url != new_driver.driver_url
           fail "Cannot move '#{machine_spec.name}' from #{current_driver.driver_url} to #{new_driver.driver_url}: machine moving is not supported.  Destroy and recreate."
         end
-        fail "Driver not specified for one_image #{new_resource.name}" unless new_driver
+        fail "Driver not specified for one_vnet #{new_resource.name}" unless new_driver
         new_driver
       end
 

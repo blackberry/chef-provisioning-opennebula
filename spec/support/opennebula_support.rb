@@ -1,4 +1,4 @@
-# Copyright 2016, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,10 +17,21 @@ require 'cheffish/rspec/matchers'
 require 'chef/provisioning/opennebula_driver'
 require 'fileutils'
 
-def chef_run(recipe)
+def chef_run(recipe, append_path = true)
   recipe_array = recipe.is_a?(Array) ? recipe : [recipe]
+  recipe_array.map! { |r| './spec/recipes/' + r } if append_path
+  recipe_array = ['./spec/recipes/common.rb'] + recipe_array
+  FileUtils.rm_rf('/tmp/chef-provisioning-opennebula-rspec-recipe.rb')
+  File.open('/tmp/chef-provisioning-opennebula-rspec-recipe.rb', 'a') do |file|
+    file.puts("require '#{File.dirname(__FILE__)}/../config.rb'")
+    recipe_array.each do |recipe_file|
+      content = File.read(recipe_file)
+      file.puts('')
+      file.puts(content)
+    end
+  end
   chef_client = Mixlib::ShellOut.new(
-    "bundle exec chef-client -z ./spec/recipes/driver_options_spec.rb #{recipe_array.map { |r| './spec/recipes/' + r }.join(' ')} --force-formatter",
+    'chef-client -z /tmp/chef-provisioning-opennebula-rspec-recipe.rb --force-formatter',
     shellout_options(:timeout => 900)
   )
   chef_client.run_command
@@ -32,65 +43,84 @@ def shellout_options(options = {})
 end
 
 def format_error(msg)
-  "================================================================================\n#{msg}\n================================================================================"
+  "================================================================================\n#{msg}\n================================================================================\n "
 end
 
-# gets runtime / idempotency-related errors from stdout
-def get_error(stdout, expected = nil, error = nil)
-  err = stdout.include?('Chef Client finished') ? nil : "Chef run did not report 'Chef Client finished', no errors were detected."
+def get_unique_file(path, basename, rest)
+  p = path.chomp('/')
+  fn = "#{p}/#{basename}#{rest}"
+  return fn unless File.exist?(fn)
+  n = 1
+  n += 1 while File.exist?("#{p}/#{basename}__#{n}#{rest}")
+  "#{p}/#{basename}__#{n}#{rest}"
+end
 
-  unless error.nil?
-    case error
+def get_error(stdout, expected, fail_if)
+  stacktrace = stdout.match(/FATAL: Stacktrace dumped to (.*?chef-stacktrace\.out)/)
+  stacktrace = stacktrace ? stacktrace[1] : nil
+  err = stacktrace ? "Chef run did not report 'Chef Client finished'." : nil
+
+  case fail_if
+  when Regexp
+    return "stdout matched the following when it should not have:\n#{fail_if}", stacktrace if stdout =~ fail_if
+  when String
+    return "stdout included the following when it should not have:\n#{fail_if}", stacktrace if stdout.include?(fail_if)
+  end unless fail_if.nil?
+
+  # Each chef run can only fail due to one reason, so if it was an expected error, we can simply return nil
+  [' RuntimeError: ', ' NoMethodError: ', ' TypeError: ', ' ERROR: ', ' FATAL: '].each do |e|
+    the_error = (stdout.split(e).last).split("\n")[0...-1].join("\n")
+    case expected
     when Regexp
-      return "stdout matched:\n#{error}" if stdout =~ error
+      if e + the_error =~ expected
+        return nil, nil
+      else
+        return "#{e.strip}\n#{the_error}", stacktrace
+      end
     when String
-      return "stdout included:\n#{error}" if stdout.include?(error)
-    end
-  end
+      if (e + the_error).include?(expected)
+        return nil, nil
+      else
+        return "#{e.strip}\n#{the_error}", stacktrace
+      end
+    else
+      return "#{e.strip}\n#{the_error}", stacktrace
+    end if stdout.include?(e)
+  end if err
 
-  if stdout.include?('RuntimeError: ')
-    return "RuntimeError\n" + (stdout.split('RuntimeError: ').last).split("\n").first
-  elsif stdout.include?('NoMethodError: ')
-    return "NoMethodError\n" + (stdout.split('NoMethodError: ').last).split("\n").first
-  elsif stdout.include?('ERROR: ') && err
-    return "ERROR\n" + (stdout.split('ERROR: ').last).split("\n").first
-  elsif stdout.include?('FATAL: ')
-    return "FATAL\nAn unknown fatal error has occurred."
-  end
-
-  return err if expected.nil?
+  return err, stacktrace if expected.nil?
 
   case expected
-  when Symbol
-    fail "The only symbol supported for 'expected' is :idempotent, you passed :#{expected}" unless expected == :idempotent
-    return 'Chef run did not idempotently skip when it should have.' unless stdout.include?('(up to date)')
   when Regexp
-    return "Chef run idempotently skipped when it should not have.\nIf you intended for it to skip, pass in :idempotent as 'expected' instead." if stdout.include?('(up to date)')
-    return "No match in stdout for:\n#{expected}" unless stdout =~ expected
+    return "stdout did not match the following when it should have:\n#{expected}", stacktrace unless stdout =~ expected
   when String
-    return "Chef run idempotently skipped when it should not have.\nIf you intended for it to skip, pass in :idempotent as 'expected' instead." if stdout.include?('(up to date)')
-    return "stdout did not include:\n#{expected}" unless stdout.include?(expected)
+    return "stdout did not include the following when it should have:\n#{expected}", stacktrace unless stdout.include?(expected)
   end
 
-  err
+  [err, stacktrace]
 end
 
-RSpec::Matchers.define :converge_test_recipe do |recipe = nil, expected = :idempotent, error = nil|
-  fail 'All tests require a recipe.' if recipe.nil?
+# data = {
+#   :recipe => 'recipe to test, must be given',
+#   :expected => 'fail if not match, can be errors',
+#   :fail_if => 'fail if match'
+# }
+RSpec::Matchers.define :converge_test_recipe do |data = {}|
+  fail 'All tests require a :recipe.' unless data[:recipe]
   match do
-    stdout = chef_run(recipe)
-    # logs each chef run
-    dir = RSpec.configuration.log_dir + '/' + File.dirname(recipe)
+    stdout = chef_run(data[:recipe])
+
+    dir = RSpec.configuration.log_dir + '/' + File.dirname(data[:recipe])
     FileUtils.mkdir_p(dir)
-    log_basename = expected == :idempotent ? File.basename(recipe, '.*') + '__i' : File.basename(recipe, '.*')
-    File.open("./#{dir}/#{log_basename}_stdout.log", 'w+') { |file| file.write(stdout) }
-    @error_message = get_error(stdout, expected, error)
+
+    log_basename = File.basename(data[:recipe], '.*')
+    File.open(get_unique_file("./#{dir}", log_basename, '.stdout.log'), 'w+') { |file| file.write(stdout) }
+
+    @error_message, stacktrace = get_error(stdout, data[:expected], data[:fail_if])
     @error_message = format_error(@error_message) unless @error_message.nil?
-    # copies the stacktrace for tests that have failed
-    FileUtils.cp(
-      "#{ENV['HOME']}/.chef/local-mode-cache/cache/chef-stacktrace.out",
-      "./#{dir}/#{log_basename}_stacktrace.out"
-    ) unless @error_message.nil?
+
+    FileUtils.cp(stacktrace, get_unique_file("./#{dir}", log_basename, '.stacktrace.out')) if stacktrace
+
     @error_message.nil?
   end
   failure_message do

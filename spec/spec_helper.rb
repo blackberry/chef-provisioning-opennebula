@@ -1,4 +1,4 @@
-# Copyright 2016, BlackBerry, Inc.
+# Copyright 2016, BlackBerry Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,31 +19,35 @@ require 'chef/provisioning'
 require 'chef/provisioning/opennebula_driver'
 require 'chef/run_context'
 require 'cheffish/rspec/matchers'
-require 'opennebula'
 require 'support/opennebula_support'
 require 'fileutils'
+require_relative 'config.rb'
 
-def test_helper(context, recipe, expected, error = nil)
+def idempotency_helper(context, recipe, expected = nil)
   context context do
-    it { is_expected.to converge_test_recipe(recipe, expected, error) }
+    it { is_expected.to converge_test_recipe(:recipe => recipe, :expected => expected, :fail_if => '(up to date)') }
   end
   context "[SKIP] #{context}" do
-    it { is_expected.to converge_test_recipe(recipe, :idempotent, error) }
+    it { is_expected.to converge_test_recipe(:recipe => recipe, :expected => '(up to date)', :fail_if => nil) }
   end
 end
 
 def cleanup
-  chef_run(%w(
-    OneDriver/delete/OpenNebula-test-tpl.rb
+  # OneDriver deletes are listed explicitly because they need to be run in a certain order.
+  cleanup_list = %w(
+    OneDriver/delete/OpenNebula-test-tpl-strings.rb
     OneDriver/delete/OpenNebula-test-tpl-ints.rb
-    OneDriver/delete/OpenNebula-tpl-1-vm.rb
-    OneDriver/delete/OpenNebula-bootstrap-vm.rb
-    OneDriver/delete/OpenNebula-bootstrap-img.rb
-    OneDriver/delete/OpenNebula-back-1-vm.rb
-    OneDriver/delete/OpenNebula-back-2-vm.rb
-    OneDriver/delete/OpenNebula-snap-1-img.rb
-    OneDriver/delete/OpenNebula-snap-2-img.rb
-  ))
+    OneDriver/delete/OpenNebula-test-tpl-mix.rb
+    OneDriver/delete/OpenNebula-test-vm.rb
+    OneDriver/delete/OpenNebula-test-vm-vnet.rb
+    OneDriver/delete/OpenNebula-test-vnet.rb
+    OneDriver/delete/OpenNebula-test-img.rb
+    OneDriver/delete/OpenNebula-test-snap-img.rb
+  ).map { |f| "#{File.dirname(__FILE__)}/recipes/" + f }
+  cleanup_list += Dir["#{File.dirname(__FILE__)}/recipes/OneFlowTemplate/delete/*.rb"] unless ONE_FLOW_URL.nil?
+  cleanup_list += Dir["#{File.dirname(__FILE__)}/recipes/OneFlowService/delete/*.rb"] unless ONE_FLOW_URL.nil?
+  err = get_error(chef_run(cleanup_list, false), 'Chef Client finished', nil)
+  fail "\n\nTest suite cleanup failed\n#{err.first}\n\n" unless err.first.nil?
 end
 
 RSpec.configure do |config|
@@ -54,10 +58,11 @@ RSpec.configure do |config|
     FileUtils.rm_rf(config.log_dir)
     FileUtils.mkdir_p(config.log_dir)
     FileUtils.rm_rf('nodes')
-    fail 'Quick cleanup before testing failed.' unless cleanup.include?('Chef Client finished')
+    cleanup
   end
   config.after(:suite) do
     FileUtils.rm_rf('nodes')
-    fail 'Quick cleanup after testing failed.' unless cleanup.include?('Chef Client finished')
+    cleanup
+    FileUtils.rm_rf('/tmp/chef-provisioning-opennebula-rspec-recipe.rb')
   end
 end

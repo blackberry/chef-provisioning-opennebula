@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.5 (4/28/2016)
+- Added OneFlow resources (see readme): one_flow_template, one_flow_service
+- Added RSpec tests for OneFlow
+- Fixed RSpec tests for newest chef-client 12.9.38
+- Fixed bug regarding destroying machines when machine_spec.reference is nil
+- Permitted driver profile switching
+- Added backwards compatibility for managing machines provisioned with gem versions prior to v0.3.3
+- Added ability to automatically choose the correct opennebula gem version depending on server version
+
 ## 0.4.4 (2/29/2016)
 - Rewrote RSpec test suite
 - Improved chef-run error detection algorithm

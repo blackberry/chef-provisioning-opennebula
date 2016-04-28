@@ -3,14 +3,23 @@
 ## Feel free to modify any variables to your needs.  ##
 #######################################################
 
-# this is the OpenNebula endpoint url
-ONE_XMLRPC = 'http://1.2.3.4:443/api:boggi'
+# your driver url, opennebula:<endpoint_url>:<profile>
+DRIVER_URL = 'opennebula:http://1.2.3.4:443/api:boggi'
+
+# test for profile moving, set nil to skip
+DRIVER_URL_2 = 'opennebula:http://1.2.3.4:443/api:gary'
+
+# set this to nil if you do not want to test OneFlow
+ONE_FLOW_URL = 'http://gary.1.2.3.4:9876'
 
 # the path to your local chef repo, an empty folder would work, if the folder does not exist, one will be automatically created
 CHEF_REPO_PATH = '/home/gary/test-repo'
 
-# required for recipes/OneDriver/create_one_image_spec.rb
+# required for recipes involving allocating datablocks
 DATASTORE_ID = 103
+
+# required for recipes involving allocating vnets
+VNET_ID = 394
 
 VM_TEMPLATE = {
   # the base URL from which files are downloaded eg. chef-client.deb, init.sh, service.gz etc.
