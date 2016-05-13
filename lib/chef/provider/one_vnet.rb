@@ -86,11 +86,8 @@ class Chef
           else
             same = ar_pool[0]['AR']['SIZE'].to_i == @new_resource.size
           end
-          if same
-            action_handler.report_progress "vnet '#{@new_resource.name}' already exists - (up to date)"
-          else
-            fail "vnet '#{@new_resource.name}' exists with different configuration"
-          end
+          fail "vnet '#{@new_resource.name}' exists with different configuration" unless same
+          action_handler.report_progress "vnet '#{@new_resource.name}' already exists - (up to date)"
         else
           fail "parent network '#{@new_resource.network}' does not exist" unless exists?(:id => @new_resource.network)
           action_handler.perform_action "reserved vnet '#{@new_resource.name}'" do

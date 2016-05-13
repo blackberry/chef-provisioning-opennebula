@@ -37,7 +37,7 @@ class Chef
         end
 
         def default
-          fail 'No credentials loaded!  Do you have a ~/.one/one_auth file?' if @credentials.size == 0
+          fail 'No credentials loaded!  Do you have a ~/.one/one_auth file?' if @credentials.empty?
           @credentials[ENV['ONE_DEFAULT_PROFILE'] || 'default'] || @credentials.first[1]
         end
 

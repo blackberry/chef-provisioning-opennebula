@@ -238,7 +238,7 @@ class Chef
         # Gets a single ID of a service or template, fails if there's not exactly 1, or returns nil if there 0 and nil_if_none
         def get_unique_id(type, name, nil_if_none = false)
           matches = get_ids(type, name)
-          if matches.length == 0
+          if matches.empty?
             return nil if nil_if_none
             fail "There are no OneFlow #{type}s with the name '#{name}'"
           elsif matches.length > 1
@@ -250,7 +250,7 @@ class Chef
 
         # Check if a service or template exists
         def exists?(type, name)
-          get_ids(type, name).length == 0 ? false : true
+          !get_ids(type, name).empty?
         end
 
         # Gets permission of service or template

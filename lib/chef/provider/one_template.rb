@@ -139,12 +139,10 @@ class Chef
       end
 
       def create_template
-        if new_resource.template_file && new_resource.template.size > 0
-          fail("Attributes 'template_file' and 'template' are mutually " \
-               'exclusive.')
-        elsif new_resource.template_file
+        fail("Attributes 'template_file' and 'template' are mutually 'exclusive.'") if new_resource.template_file && !new_resource.template.empty?
+        if new_resource.template_file
           ::File.read(new_resource.template_file)
-        elsif new_resource.template.size > 0
+        elsif !new_resource.template.empty?
           driver.one.create_template(new_resource.template)
         else
           fail("Missing attribute 'template_file' or 'template' in " \
