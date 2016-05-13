@@ -24,7 +24,7 @@ class Chef
     # Extending module.
     #
     module OpenNebulaDriver
-      VERSION = '0.4.5'
+      VERSION = '0.4.6'.freeze
     end
   end
 end

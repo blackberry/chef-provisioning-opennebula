@@ -53,6 +53,7 @@ end
 
 class Chef
   module Provisioning
+    # OpenNebulaDriver module.
     module OpenNebulaDriver
       def self.match_driver_url(url, allow_nil_profile = false)
         scan = url.match(%r/opennebula:(https?:\/\/[^:\/]+ (?::[0-9]{2,5})? (?:\/[^:\s]+) ) :?([^:\s]+)?/x)
@@ -78,7 +79,7 @@ class Chef
         fail "OpenNebula credentials cannot be #{credentials.class}, it must be a String" unless credentials.is_a?(String)
         fail "OpenNebula endpoint cannot be #{endpoint.class}, it must be a String" unless endpoint.is_a?(String)
         fail "OpenNebula options cannot be #{options.class}, it must be a Hash" unless options.is_a?(Hash)
-        server_version, _ = Open3.capture2e("ruby #{File.dirname(__FILE__)}/../driver_init/server_version.rb #{endpoint} #{credentials} #{options.to_json.inspect}")
+        server_version, = Open3.capture2e("ruby #{File.dirname(__FILE__)}/../driver_init/server_version.rb #{endpoint} #{credentials} #{options.to_json.inspect}")
         server_version.strip!
         fail server_version unless server_version =~ /^\d+\.\d+(?:\.\d+)?$/
         begin
@@ -86,11 +87,7 @@ class Chef
           require 'opennebula'
         rescue Gem::LoadError => e
           e_inspect = e.inspect
-          if e_inspect.include?('already activated')
-            Chef::Log.warn(e_inspect)
-          else
-            raise e
-          end
+          raise e unless e_inspect.include?('already activated')
         end
         require 'chef/provisioning/opennebula_driver/one_lib'
         gem_version = Gem.loaded_specs['opennebula'].version.to_s
@@ -305,15 +302,17 @@ class Chef
               end
               fail "Failed to destroy '#{instance.name}'.  Current state: #{instance.state_str}" if instance.state_str != 'DONE'
             end
+          elsif machine_spec.reference
+            Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - (up to date)")
           else
-            if machine_spec.reference
-              Chef::Log.info("vm #{machine_spec.name} (#{machine_spec.reference['instance_id']}) does not exist - (up to date)")
-            else
-              Chef::Log.info("vm #{machine_spec.name} does not exist - (up to date)")
-            end
+            Chef::Log.info("vm #{machine_spec.name} does not exist - (up to date)")
           end
-          strategy = convergence_strategy_for(machine_spec, machine_options)
-          strategy.cleanup_convergence(action_handler, machine_spec)
+          begin
+            strategy = convergence_strategy_for(machine_spec, machine_options)
+            strategy.cleanup_convergence(action_handler, machine_spec)
+          rescue Net::HTTPServerException => e
+            raise unless e.response.code == '404'
+          end
         end
 
         # Stop the given machine.
@@ -580,12 +579,12 @@ class Chef
         def instance_for(machine_spec)
           instance = nil
           if machine_spec.reference
-            current_endpoint, _ = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
+            current_endpoint, = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
             fail "Cannot move '#{machine_spec.name}' from #{current_endpoint} to #{driver_url}: machine moving is not supported.  Destroy and recreate." if current_endpoint != driver_url
             instance = @one.get_resource(:virtualmachine, :id => machine_spec.reference['instance_id'].to_i)
             machine_spec.driver_url = @driver_url_with_profile
           elsif machine_spec.location
-            current_endpoint, _ = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
+            current_endpoint, = Chef::Provisioning::OpenNebulaDriver.match_driver_url(machine_spec.driver_url, true)
             fail "Cannot move '#{machine_spec.name}' from #{current_endpoint} to #{driver_url}: machine moving is not supported.  Destroy and recreate." if current_endpoint != driver_url
             instance = @one.get_resource(:virtualmachine, :id => machine_spec.location['server_id'].to_i)
             machine_spec.driver_url = @driver_url_with_profile
@@ -631,7 +630,7 @@ class Chef
           }.merge(machine_options[:ssh_options] || {})
           ssh_options[:proxy] = Net::SSH::Proxy::Command.new(ssh_options[:proxy]) if ssh_options.key?(:proxy)
 
-          connection_timeout = machine_options[:connection_timeout] || 300
+          connection_timeout = machine_options[:connection_timeout] || 300 # default is 5 min
           username = get_ssh_user(machine_spec, machine_options)
 
           options = {}
@@ -644,16 +643,23 @@ class Chef
 
           transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, config)
 
-          # wait up to 5 min to establish SSH connection
-          connect_sleep = 3
+          rc = retryable_operation("Waiting for SSH connection", connection_timeout.to_i) { transport.available? }
+          fail "Failed to establish SSH connection to '#{machine_spec.name}'" if rc.nil?
+          transport
+        end
+
+        # Retry an operation until the timeout expires.  Will always try at least once.
+        def retryable_operation(msg = "operation", timeout = 15, delay = 3)
+          return nil unless block_given?
           start = Time.now
           loop do
-            break if transport.available?
-            fail "Failed to establish SSH connection to '#{machine_spec.name}'" if Time.now > start + connection_timeout.to_i
-            Chef::Log.info("Waiting for SSH server ...")
-            sleep connect_sleep
+            return true if yield
+            Chef::Log.info(msg)
+            sleep delay
+            break if (Time.now - start) > timeout
           end
-          transport
+          Chef::Log.error("Timed out waiting for operation to complete: '#{msg}'")
+          nil
         end
 
         def convergence_strategy_for(machine_spec, machine_options)

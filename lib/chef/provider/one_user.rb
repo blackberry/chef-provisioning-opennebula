@@ -70,17 +70,14 @@ class Chef
       end
 
       action :update do
-        if exists?(:id => @new_resource.user_id, :name => @new_resource.name)
-          fail "':template' or ':template_file' attribute missing" if !@new_resource.template && !@new_resource.template_file
-          # hash = @current_user.to_hash
-          tpl = new_driver.one.create_template(@new_resource.template) if @new_resource.template
-          tpl = ::File.read(@new_resource.template_file) if @new_resource.template_file
+        fail "user '#{new_resource.name}' does not exists" unless exists?(:id => @new_resource.user_id, :name => @new_resource.name)
+        fail "':template' or ':template_file' attribute missing" unless @new_resource.template || @new_resource.template_file
 
-          rc = @current_user.update(tpl, true)
-          fail "failed to update user '#{@new_resource.name}': #{rc.message}" if OpenNebula.is_error?(rc)
-        else
-          fail "user '#{new_resource.name}' does not exists"
-        end
+        tpl = new_driver.one.create_template(@new_resource.template) if @new_resource.template
+        tpl = ::File.read(@new_resource.template_file) if @new_resource.template_file
+
+        rc = @current_user.update(tpl, true)
+        fail "failed to update user '#{@new_resource.name}': #{rc.message}" if OpenNebula.is_error?(rc)
       end
 
       protected

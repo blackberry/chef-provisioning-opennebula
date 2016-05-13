@@ -152,7 +152,7 @@ class Chef
             next if filter[:uname] && res.to_hash[hash_key]['UNAME'] != filter[:uname]
             resources << res
           end
-          return nil if resources.size == 0
+          return nil if resources.empty?
           return resources[0] if resources.size == 1
           resources
         end
@@ -171,13 +171,36 @@ class Chef
           end_state ||= 'RUNNING'
           vm = get_resource(:virtualmachine, :id => id)
           fail "Did not find VM with ID: #{id}" unless vm
-          while vm.lcm_state_str != end_state.upcase
+
+          # Wait up to 10 min for the VM to be ready
+          rc = retryable_operation("wait for VM #{id} to be ready", 600, 2) do
             vm.info
-            Chef::Log.debug("Waiting for VM '#{id}' to be in '#{end_state.upcase}' state: '#{vm.lcm_state_str}'")
-            fail "'#{vm.name}'' failed.  Current state: #{vm.state_str}" if vm.state_str == 'FAILED' || vm.lcm_state_str == 'FAILURE'
-            sleep(2)
+            if vm.lcm_state_str != 'LCM_INIT'
+              short_lcm = OpenNebula::VirtualMachine::SHORT_LCM_STATES[vm.lcm_state_str]
+              fail "'#{vm.name}'' failed.  Current state: #{vm.lcm_state_str}" if short_lcm == 'fail'
+            end
+            fail "'#{vm.name}'' failed.  Current state: #{vm.state_str}" if vm.state_str == 'FAILED'
+            Chef::Log.info("current state: '#{vm.lcm_state_str}'  short: '#{short_lcm}'")
+            OpenNebula::Error.new("Waiting") unless vm.lcm_state_str.casecmp(end_state) == 0
           end
+          fail "wait_for_vm timed out: '#{id}'" if rc.nil?
           vm
+        end
+
+        # Retry an OpenNebula operation until the timeout expires.  Will always try at least once.
+        def retryable_operation(msg = "operation", timeout = 15, delay = 2)
+          return nil unless block_given?
+          start = Time.now
+          rc = nil
+          loop do
+            rc = yield
+            return true unless OpenNebula.is_error?(rc)
+            Chef::Log.info(msg)
+            sleep delay
+            break if (Time.now - start) > timeout
+          end
+          Chef::Log.info("Timed out waiting for OpenNebula operation.  Got error #{rc.message} from OpenNebula.")
+          nil
         end
 
         def rename_vm(res, name)
@@ -245,7 +268,8 @@ DEV_PREFIX = #{img_config[:prefix]}
           image = nil
           state = 'INIT'
           pool = get_pool(:image)
-          while state == 'INIT' || state == 'LOCKED'
+
+          retryable_operation("wait for IMAGE #{img_id} to be ready", 600, 2) do
             pool.info!(-2, img_id, img_id)
             pool.each do |img|
               next unless img.id == img_id
@@ -255,7 +279,7 @@ DEV_PREFIX = #{img_config[:prefix]}
               state = cur_state
               break
             end
-            sleep(2)
+            OpenNebula::Error.new("Waiting") if state == 'INIT' || state == 'LOCKED'
           end
           fail "Failed to create #{name} image. State = '#{state}'" if state != 'READY'
           Chef::Log.info("Image #{name} is in READY state")
@@ -364,7 +388,7 @@ DEV_PREFIX = #{img_config[:prefix]}
           t_hash = nil
           doc = OpenNebula::CustomObject.new(OpenNebula::CustomObject.build_xml, @client)
           unless OpenNebula.is_error?(doc)
-            rc = doc.allocate("#{File.read(options[:template_file])}")
+            rc = doc.allocate(File.read(options[:template_file]).to_s)
             fail "Failed to allocate OpenNebula document: #{rc.message}" if OpenNebula.is_error?(rc)
             doc.info!
             t_hash = doc.to_hash['DOCUMENT']['TEMPLATE']
@@ -450,16 +474,8 @@ DEV_PREFIX = #{img_config[:prefix]}
             else
               comma = (index < count) && level > 0
               level.times { tpl << "  " }
-              if v.is_a?(Integer)
-                tpl << "#{k} = \"#{v}\""
-              elsif v.is_a?(String)
-                # Fix for: template does not support embedded quotation marks
-                # Escaping of " only happens if " is not already escaped, preceded by \\
-                tpl << "#{k} = \"#{v.gsub(/(?<!\\)\"/, '\"')}\""
-              else # any other type
-                # convert to string and print it
-                tpl << "#{k} = \"#{v}\""
-              end
+              txt = v.is_a?(String) ? "#{k} = \"#{v.gsub(/(?<!\\)\"/, '\"')}\"" : "#{k} = \"#{v}\""
+              tpl << txt
               tpl << (comma ? ",\n" : "\n")
               index += 1
             end
