@@ -87,7 +87,12 @@ class Chef
           require 'opennebula'
         rescue Gem::LoadError => e
           e_inspect = e.inspect
-          raise e unless e_inspect.include?('already activated')
+          unless e_inspect.include?('already activated')
+            info_out, info_err = Open3.capture2e("gem environment")
+            Chef::Log.fatal("Please check your environment settings")
+            Chef::Log.fatal(info_out + "\n" + info_err)
+            raise e
+          end
         end
         require 'chef/provisioning/opennebula_driver/one_lib'
         gem_version = Gem.loaded_specs['opennebula'].version.to_s
@@ -203,6 +208,10 @@ class Chef
           return machine_spec unless instance.nil?
 
           unless machine_options[:bootstrap_options]
+            instance = retry_one("Retrying allocate_machine.instance_for (missing bootstrap options)") do
+              instance_for(machine_spec)
+            end
+            return machine_spec unless instance.nil?
             fail "'bootstrap_options' must be specified"
           end
           check_unique_names(machine_options, machine_spec)
@@ -643,23 +652,10 @@ class Chef
 
           transport = Chef::Provisioning::Transport::SSH.new(machine_spec.reference['ip'], username, ssh_options, options, config)
 
-          rc = retryable_operation("Waiting for SSH connection", connection_timeout.to_i) { transport.available? }
+          retries = connection_timeout.to_i / 3
+          rc = @one.retry_one("Waiting for SSH connection", retries, 3) { transport.available? ? true : nil }
           fail "Failed to establish SSH connection to '#{machine_spec.name}'" if rc.nil?
           transport
-        end
-
-        # Retry an operation until the timeout expires.  Will always try at least once.
-        def retryable_operation(msg = "operation", timeout = 15, delay = 3)
-          return nil unless block_given?
-          start = Time.now
-          loop do
-            return true if yield
-            Chef::Log.info(msg)
-            sleep delay
-            break if (Time.now - start) > timeout
-          end
-          Chef::Log.error("Timed out waiting for operation to complete: '#{msg}'")
-          nil
         end
 
         def convergence_strategy_for(machine_spec, machine_options)

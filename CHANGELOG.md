@@ -1,11 +1,16 @@
 # Changelog
+## 0.4.7 (8/5/2016)
+- Added debug info when server_version.rb fails to load 'opennebula' gem, due to bad environment settings
+- Added retries to allocate_machine in case ONE has issues and :bootstrap_options are not specified
+- Removed default CONTEXT['USER_DATA'] attributes for cloud-init
+
 ## 0.4.6 (5/3/2016)
 - Added begin/rescue around convergence_strategy deletion in destroy_machine method to avoid failures
   when the client/node objects are not present
 - Fixed rubocop errors
 
 ## 0.4.5 (4/28/2016)
-- Added OneFlow resources (see readme): one_flow_template, one_flow_service
+- Added OneFlow resources (see README): one_flow_template, one_flow_service
 - Added RSpec tests for OneFlow
 - Fixed RSpec tests for newest chef-client 12.9.38
 - Fixed bug regarding destroying machines when machine_spec.reference is nil

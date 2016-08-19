@@ -173,34 +173,41 @@ class Chef
           fail "Did not find VM with ID: #{id}" unless vm
 
           # Wait up to 10 min for the VM to be ready
-          rc = retryable_operation("wait for VM #{id} to be ready", 600, 2) do
+          rc = retry_one("wait for VM #{id} to be ready", 300, 2) do
             vm.info
             if vm.lcm_state_str != 'LCM_INIT'
               short_lcm = OpenNebula::VirtualMachine::SHORT_LCM_STATES[vm.lcm_state_str]
               fail "'#{vm.name}'' failed.  Current state: #{vm.lcm_state_str}" if short_lcm == 'fail'
             end
             fail "'#{vm.name}'' failed.  Current state: #{vm.state_str}" if vm.state_str == 'FAILED'
-            Chef::Log.info("current state: '#{vm.lcm_state_str}'  short: '#{short_lcm}'")
-            OpenNebula::Error.new("Waiting") unless vm.lcm_state_str.casecmp(end_state) == 0
+            Chef::Log.info("current state #{vm.name}: '#{vm.lcm_state_str}'  short: '#{short_lcm}'")
+            vm.lcm_state_str.casecmp(end_state) == 0 ? true : nil
           end
           fail "wait_for_vm timed out: '#{id}'" if rc.nil?
           vm
         end
 
-        # Retry an OpenNebula operation until the timeout expires.  Will always try at least once.
-        def retryable_operation(msg = "operation", timeout = 15, delay = 2)
+        # Retry ONE operation
+        def retry_one(msg = "retry_one", retries = 3, retry_delay = 5, return_nil = false, return_error = false)
           return nil unless block_given?
-          start = Time.now
+          count = 1
           rc = nil
           loop do
             rc = yield
-            return true unless OpenNebula.is_error?(rc)
             Chef::Log.info(msg)
-            sleep delay
-            break if (Time.now - start) > timeout
+            if OpenNebula.is_error?(rc)
+              return rc if return_error
+            elsif rc.nil?
+              return rc if return_nil
+            else
+              return rc
+            end
+            sleep retry_delay
+            break if count == retries
+            count += 1
           end
-          Chef::Log.info("Timed out waiting for OpenNebula operation.  Got error #{rc.message} from OpenNebula.")
-          nil
+          Chef::Log.info("FAIL: one_lib.retry_one '#{msg}'")
+          rc
         end
 
         def rename_vm(res, name)
@@ -269,7 +276,7 @@ DEV_PREFIX = #{img_config[:prefix]}
           state = 'INIT'
           pool = get_pool(:image)
 
-          retryable_operation("wait for IMAGE #{img_id} to be ready", 600, 2) do
+          retry_one("wait for IMAGE #{img_id} to be ready", 600, 2) do
             pool.info!(-2, img_id, img_id)
             pool.each do |img|
               next unless img.id == img_id
@@ -279,7 +286,7 @@ DEV_PREFIX = #{img_config[:prefix]}
               state = cur_state
               break
             end
-            OpenNebula::Error.new("Waiting") if state == 'INIT' || state == 'LOCKED'
+            (state == 'INIT' || state == 'LOCKED') ? nil : true
           end
           fail "Failed to create #{name} image. State = '#{state}'" if state != 'READY'
           Chef::Log.info("Image #{name} is in READY state")
@@ -367,10 +374,6 @@ DEV_PREFIX = #{img_config[:prefix]}
           t_hash['NAME'] = name
           unless t_hash['CONTEXT']['SSH_PUBLIC_KEY']
             t_hash['CONTEXT']['SSH_PUBLIC_KEY'] = "$USER[SSH_PUBLIC_KEY]"
-          end
-          unless t_hash['CONTEXT']['USER_DATA']
-            t_hash['CONTEXT']['USER_DATA'] = "#cloud-config\n" \
-                                             "manage_etc_hosts: true\n"
           end
           tpl = create_template(t_hash)
           Chef::Log.debug(tpl)
