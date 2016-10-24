@@ -49,7 +49,100 @@ class Chef
 
       action :allocate do
         if exists?
-          action_handler.report_progress "image '#{new_resource.name}' already exists - (up to date)"
+          # Image already exists, check whether we need/can update it
+          # OpenNebula Image example:
+          # ID             : 14202
+          # NAME           : ey-test
+          # USER           : Mandolin
+          # GROUP          : users
+          # DATASTORE      : orn-svc01-ds
+          # TYPE           : DATABLOCK
+          # REGISTER TIME  : 10/19 18:16:02
+          # PERSISTENT     : No
+          # SOURCE         : /var/lib/one/datastores/103/743dff63f337a0192b13f2963f92d741
+          # FSTYPE         : raw
+          # SIZE           : 1000M
+          # STATE          : rdy
+          # RUNNING_VMS    : 0
+          #
+          # PERMISSIONS
+          # OWNER          : um-
+          # GROUP          : ---
+          # OTHER          : ---
+          #
+          # IMAGE TEMPLATE
+          # DESCRIPTION="what a heck!"
+          # DEV_PREFIX="vd"
+          # DRIVER="qcow2"
+          # FSTYPE="ext4"
+          # SIZE="100"
+          #
+          # We can update many parameters and whatever we update goes into section below 'IMAGE TEMPLATE'.
+          # IMPORTANT: if the parameter we are updating exists above 'IMAGE TEMPLATE' then our modification has no effect.
+          # In other words a value for a parameter defined above wins over parameter defined below 'IMAGE TEMPLATE'.
+
+          on_image = @image.to_hash['IMAGE']
+
+          # We can update only following attributes. This is a map of one_image attributes to OpenNebula image attributes
+          attrs_map = { 'name' => 'NAME', 'size' => 'SIZE', 'datastore_id' => 'DATASTORE_ID', 'type' => 'TYPE', 'description' => 'DESCRIPTION', 'fs_type' => 'FSTYPE',
+                        'img_driver' => 'DRIVER', 'prefix' => 'DEV_PREFIX', 'persistent' => 'PERSISTENT', 'mode' => 'PERMISSIONS', 'disk_type' => 'DISK_TYPE' }
+
+          # Find out what attribute needs to be updated
+          attrs_to_update = {}
+          new_resource_hash = @new_resource.to_hash # hash keys are symbols
+          new_resource_hash.each do |k, v|
+            next if v.nil? || !attrs_map.key?(k.to_s)
+            v = v.to_s # everything is String in what we get in OpenNebula Image info
+            on_attr = attrs_map[k.to_s]
+
+            # For some one_image attributes provided in new_resource we need to find respective values in ON Image
+            case k
+            when :type
+              image_types = %w(OS CDROM DATABLOCK KERNEL RAMDISK CONTEXT)
+              on_image['TYPE'] = image_types[on_image['TYPE'].to_i] # convert Image Type Id into String
+            when :persistent
+              on_image['PERSISTENT'] = (on_image['PERSISTENT'] == '1' ? 'true' : 'false')
+            when :mode
+              perm = on_image['PERMISSIONS']
+              perm_octet_u = perm['OWNER_U'].to_i * 4 + perm['OWNER_M'].to_i * 2 + perm['OWNER_A'].to_i
+              perm_octet_g = perm['GROUP_U'].to_i * 4 + perm['GROUP_M'].to_i * 2 + perm['GROUP_A'].to_i
+              perm_octet_o = perm['OTHER_U'].to_i * 4 + perm['OTHER_M'].to_i * 2 + perm['OTHER_A'].to_i
+              on_image['PERMISSIONS'] = "#{perm_octet_u}#{perm_octet_g}#{perm_octet_o}"
+            when :disk_type
+              disk_types = %w(BLOCK CDROM FILE)
+              on_image['DISK_TYPE'] = disk_types[on_image['DISK_TYPE'].to_i] # convert Disk Type into String
+            end
+            next if on_image.key?(on_attr) && (v == on_image[on_attr])
+            next if on_image['TEMPLATE'].key?(on_attr) && (new_resource_hash[k] == on_image['TEMPLATE'][on_attr])
+            fail "Cannot update '#{on_attr}' as it is defined above 'IMAGE TEMPLATE' section." if on_image.key?(on_attr) && !on_image[on_attr].empty? && on_attr != 'PERMISSIONS'
+            attrs_to_update[on_attr] = v
+          end
+
+          unless attrs_to_update.empty?
+            # Prepare template to update
+            img_template = ''
+            attrs_to_update.each do |k, v|
+              next if k == 'PERMISSIONS' # needs special treatment
+              img_template << case k
+                              when 'SIZE', 'PERSISTENT'
+                                "#{k} = #{v}\n"
+                              when 'TYPE', 'DESCRIPTION', 'FSTYPE', 'DRIVER', 'DEV_PREFIX', 'DISK_TYPE'
+                                "#{k} = \"#{v}\"\n"
+                              end
+            end
+            # Perform actual update
+            description = "updated image '#{new_resource.name}'\n" + attrs_to_update.to_s
+            action_handler.perform_action description do
+              unless img_template == '' # can happen when we update only PERMISSIONS
+                rc = @image.update(img_template, true)
+                fail "failed to update image '#{new_resource.name}': #{rc.message}" if OpenNebula.is_error?(rc)
+              end
+              if attrs_to_update.key?('PERMISSIONS')
+                rc = @image.chmod_octet(attrs_to_update['PERMISSIONS'])
+                fail "failed to update image '#{new_resource.name}': #{rc.message}" if OpenNebula.is_error?(rc)
+              end
+            end
+          end
         else
           fail "'size' must be specified" unless new_resource.size
           fail "'datastore_id' must be specified" unless new_resource.datastore_id
@@ -81,7 +174,6 @@ class Chef
             @new_resource.updated_by_last_action(true)
           end
         when 'READY', 'USED', 'USED_PERS'
-          action_handler.report_progress "image '#{new_resource.name}' is already in #{@image.state_str} state - (up to date)"
         else
           fail "Image #{new_resource.name} is in unexpected state '#{@image.state_str}'"
         end
