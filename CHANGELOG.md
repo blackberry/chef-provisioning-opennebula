@@ -1,4 +1,7 @@
 # Changelog
+## 0.4.8 (10/24/2016)
+- one_image :create action now updates the image if necessary
+
 ## 0.4.7 (8/5/2016)
 - Added debug info when server_version.rb fails to load 'opennebula' gem, due to bad environment settings
 - Added retries to allocate_machine in case ONE has issues and :bootstrap_options are not specified

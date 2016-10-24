@@ -208,7 +208,7 @@ class Chef
           return machine_spec unless instance.nil?
 
           unless machine_options[:bootstrap_options]
-            instance = retry_one("Retrying allocate_machine.instance_for (missing bootstrap options)") do
+            instance = @one.retry_one("Retrying allocate_machine.instance_for (missing bootstrap options)") do
               instance_for(machine_spec)
             end
             return machine_spec unless instance.nil?
