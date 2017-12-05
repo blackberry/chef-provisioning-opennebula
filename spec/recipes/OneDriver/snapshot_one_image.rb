@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-one_image 'OpenNebula-test-snap-img' do
-  machine_id 'OpenNebula-test-vm'
-  disk_id 'OpenNebula-test-img'
+one_image 'RSpec-test-snap-img' do
+  machine_id 'RSpec-test-vm'
+  disk_id 'RSpec-test-img'
   action :snapshot
 end

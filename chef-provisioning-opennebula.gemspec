@@ -29,11 +29,12 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'chef'
   s.add_dependency 'chef-provisioning', '> 0.15'
-  s.add_dependency 'opennebula', '~> 4.10', '< 5'
-  s.add_dependency 'rest-client', '~> 1.8'
-  s.add_dependency 'json', '~> 1.8', '>= 1.8.3'
+  s.add_dependency 'opennebula', '>= 4.10'
+  s.add_dependency 'rest-client', '>= 1.8'
+  s.add_dependency 'json', '>= 1.8.3'
   s.add_dependency 'http-cookie', '>= 1.0.2'
 
+  s.add_development_dependency 'bundler', '~> 1.3'
   s.add_development_dependency 'rspec'
   s.add_development_dependency 'rake'
 

@@ -1,8 +1,8 @@
-/.buildpath
-/.project
-/pkg/*
-/test-results
-/nodes
-spec/config.rb
+.buildpath
+.idea
+.project
 Gemfile.lock
-*~
+pkg/*
+nodes/*
+rspec-results/
+spec/config.rb*

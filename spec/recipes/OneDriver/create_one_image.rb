@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-one_image 'OpenNebula-test-img' do
+one_image 'RSpec-test-img' do
   type 'DATABLOCK'
   size 256
   datastore_id DATASTORE_ID
