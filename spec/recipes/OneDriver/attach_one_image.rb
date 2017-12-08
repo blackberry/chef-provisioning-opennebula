@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-one_image 'OpenNebula-test-img' do
-  machine_id 'OpenNebula-test-vm'
+one_image 'RSpec-test-img' do
+  machine_id 'RSpec-test-vm'
   action :attach
 end

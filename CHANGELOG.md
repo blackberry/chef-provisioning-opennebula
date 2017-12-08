@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.4.9 (12/05/2017)
+- fix rspec tests to work with ONE 4.x and 5.x
+- remove dependency upper limit for opennebula gem 
+
 ## 0.4.8 (10/24/2016)
 - one_image :create action now updates the image if necessary
 
@@ -28,7 +33,7 @@
 - RSpec now uses `spec/config.rb` rather than environment variables
 - Test values, such as disk images, are no longer hardcoded, but are in `config.rb`
 - Tests for idempotency are now taken into account
-- Expected output for `converge_test_recipe` can now be specified in regex
+- Expected output for `converge_recipe` can now be specified in regex
 - Cleanup recipe has been split into multiple deletion tests
 - Cleanup is now run before and after the test suite runs
 - Fixed a bug introduced in 0.4.3 which failed to create proper VM template if the primitive values were non-string

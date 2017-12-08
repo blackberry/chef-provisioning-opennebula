@@ -12,20 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'chef/provisioning/opennebula_driver'
-require 'fileutils'
-
-FileUtils.mkdir_p(CHEF_REPO_PATH.chomp('/'))
-with_chef_local_server :chef_repo_path => CHEF_REPO_PATH.chomp('/')
-with_driver DRIVER_URL
-with_flow_url ONE_FLOW_URL.chomp('/') unless ONE_FLOW_URL.nil?
-
-with_machine_options MACHINE_OPTIONS.merge(
-  :bootstrap_options => {
-    :template => VM_TEMPLATE
-  }
-)
-
-one_auth = Chef::Provisioning::OpenNebulaDriver.get_onelib(
-  :driver_url => DRIVER_URL
-).client.one_auth
+one_flow_service 'RSpec-json-service-by-id' do
+  action :delete
+end

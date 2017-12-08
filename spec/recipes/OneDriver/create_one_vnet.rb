@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-one_vnet 'OpenNebula-test-vnet' do
+one_vnet 'RSpec-test-vnet' do
   network VNET_ID
-  size 2
+  size 1
   action :reserve
 end

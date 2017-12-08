@@ -84,13 +84,19 @@ class Chef
         fail server_version unless server_version =~ /^\d+\.\d+(?:\.\d+)?$/
         begin
           gem 'opennebula', "~> #{server_version}"
+        rescue Gem::MissingSpecVersionError => e
+          Chef::Log.fatal("Gem not installed: opennebula #{server_version}")
+          raise e
+        end
+        begin
           require 'opennebula'
         rescue Gem::LoadError => e
           e_inspect = e.inspect
           unless e_inspect.include?('already activated')
             info_out, info_err = Open3.capture2e("gem environment")
             Chef::Log.fatal("Please check your environment settings")
-            Chef::Log.fatal(info_out + "\n" + info_err)
+            Chef::Log.fatal("OnenNebula server API version #{server_version}")
+            Chef::Log.fatal(info_out.to_s + "\n" + info_err.to_s)
             raise e
           end
         end
