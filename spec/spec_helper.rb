@@ -20,6 +20,7 @@ require "#{File.dirname(__FILE__)}/config.rb"
 
 RSpec.configure do |config|
   config.filter_run :runme
+  config.fail_fast = true
   config.run_all_when_everything_filtered = true
   config.add_setting :log_dir, :default => File.join(File.expand_path('..', File.dirname(__FILE__)), 'rspec-results')
   config.before(:suite) do

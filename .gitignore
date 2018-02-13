@@ -5,4 +5,5 @@ Gemfile.lock
 pkg/*
 nodes/*
 rspec-results/
-spec/config.rb*
+spec/config.rb
+spec/config.rb.*

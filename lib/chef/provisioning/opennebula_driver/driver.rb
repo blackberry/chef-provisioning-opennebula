@@ -87,9 +87,6 @@ class Chef
         rescue Gem::MissingSpecVersionError => e
           Chef::Log.fatal("Gem not installed: opennebula #{server_version}")
           raise e
-        end
-        begin
-          require 'opennebula'
         rescue Gem::LoadError => e
           e_inspect = e.inspect
           unless e_inspect.include?('already activated')
@@ -100,6 +97,7 @@ class Chef
             raise e
           end
         end
+        require 'opennebula'
         require 'chef/provisioning/opennebula_driver/one_lib'
         gem_version = Gem.loaded_specs['opennebula'].version.to_s
         if gem_version == server_version

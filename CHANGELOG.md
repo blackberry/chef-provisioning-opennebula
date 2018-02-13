@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.10 (1/31/2018)
+- improve driver checks to allow concurrent running with different versions of OpenNebula
+
 ## 0.4.9 (12/05/2017)
 - fix rspec tests to work with ONE 4.x and 5.x
 - remove dependency upper limit for opennebula gem 
